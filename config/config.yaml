@@ -1,0 +1,29 @@
+run:
+  delivery: False
+
+#paths
+bed_path: "/processing_data/shared_datasets/plasma_proteome/believe/raw_data/genotypes/BELIEVE_imputed/CAMBRIDGE-BELIEVE_Freeze_One.GxS.bed"
+bim_path: "/processing_data/shared_datasets/plasma_proteome/believe/raw_data/genotypes/BELIEVE_imputed/CAMBRIDGE-BELIEVE_Freeze_One.GxS.bed"
+fam_path: "/processing_data/shared_datasets/plasma_proteome/believe/raw_data/genotypes/BELIEVE_imputed/CAMBRIDGE-BELIEVE_Freeze_One.GxS.bed"
+# TSV columns: FID, IID, SEX (1=male, 2=female, 0=unknown)
+sample_metadata: "/processing_data/shared_datasets/plasma_proteome/believe/raw_data/phenotypes/analysis.dta"
+
+external_exclusions: "/exchange/healthds/pQTL/BELIEVE/Genetic_QC_files/Intermediate_files_for_genetic_QC/outliers_to_remove.txt"
+
+thresholds:
+  sample_missingness: 0.10
+  variant_missingness: 0.10
+  maf: 0.01
+  hwe: 1.0e-15
+  heterozygosity_sd: 3.0
+  female_f_min: 0.5
+  female_f_max: 0.6
+  king_cutoff: 0.0442
+
+ld_pruning:
+  window_kb: 50
+  step_variants: 5
+  r2: 0.5
+
+pca:
+  components: 20
