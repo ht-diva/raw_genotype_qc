@@ -29,3 +29,4 @@ set-resources:
   prepare_reported_sex:
     threads: *cores
     mem_mb: 1024 + attempt * 1024
+
