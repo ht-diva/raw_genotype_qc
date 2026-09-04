@@ -3,10 +3,27 @@ run:
 
 #paths
 bed_path: "/processing_data/shared_datasets/plasma_proteome/believe/raw_data/genotypes/BELIEVE_imputed/CAMBRIDGE-BELIEVE_Freeze_One.GxS.bed"
-bim_path: "/processing_data/shared_datasets/plasma_proteome/believe/raw_data/genotypes/BELIEVE_imputed/CAMBRIDGE-BELIEVE_Freeze_One.GxS.bed"
-fam_path: "/processing_data/shared_datasets/plasma_proteome/believe/raw_data/genotypes/BELIEVE_imputed/CAMBRIDGE-BELIEVE_Freeze_One.GxS.bed"
+bim_path: "/processing_data/shared_datasets/plasma_proteome/believe/raw_data/genotypes/BELIEVE_imputed/CAMBRIDGE-BELIEVE_Freeze_One.GxS.bim"
+fam_path: "/processing_data/shared_datasets/plasma_proteome/believe/raw_data/genotypes/BELIEVE_imputed/CAMBRIDGE-BELIEVE_Freeze_One.GxS.fam"
+
 # TSV columns: FID, IID, SEX (1=male, 2=female, 0=unknown)
-sample_metadata: "/processing_data/shared_datasets/plasma_proteome/believe/raw_data/phenotypes/analysis.dta"
+sample_metadata:
+  path: "/processing_data/shared_datasets/plasma_proteome/believe/raw_data/phenotypes/analysis.dta"
+  phenotype_id_col: "ID"
+  sex_col: "SEX"
+  genotype_id_mode: "direct"
+  genotype_id_regex: null
+  id_normalization: "string"
+
+male_values:
+  - 1
+  - "M"
+  - "Male"
+
+female_value:
+  - 2
+  - "F"
+  - "Female"
 
 external_exclusions: "/exchange/healthds/pQTL/BELIEVE/Genetic_QC_files/Intermediate_files_for_genetic_QC/outliers_to_remove.txt"
 
