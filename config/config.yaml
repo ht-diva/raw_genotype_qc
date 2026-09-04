@@ -25,7 +25,7 @@ female_value:
   - "F"
   - "Female"
 
-external_exclusions: "/exchange/healthds/pQTL/BELIEVE/Genetic_QC_files/Intermediate_files_for_genetic_QC/outliers_to_remove.txt"
+external_samples_exclusions: "/exchange/healthds/pQTL/BELIEVE/Genetic_QC_files/Intermediate_files_for_genetic_QC/outliers_to_remove.txt"
 
 thresholds:
   sample_missingness: 0.10

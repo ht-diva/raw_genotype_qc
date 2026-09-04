@@ -9,7 +9,7 @@
 #SBATCH --mem=2G
 #SBATCH --time=08:00:00
 
-set -euo pipefail
+set -eo pipefail
 
 # Move to the directory from which sbatch was executed.
 cd "${SLURM_SUBMIT_DIR}"
