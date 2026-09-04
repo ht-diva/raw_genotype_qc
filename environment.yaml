@@ -6,3 +6,4 @@ dependencies:
   - snakemake-executor-plugin-slurm
   - plink2>=2.0
   - matplotlib
+  - r-base=4.4
