@@ -77,8 +77,7 @@ rule prepare_reported_sex:
         unmatched_metadata=ws_path(
             "standardization/metadata_without_genotype.tsv"
         ),
-    conda:
-        "envs/r_qc.yaml"
+
     params:
         # Metadata column containing the sample identifier.
         phenotype_id_col=lambda wc: cfg(
