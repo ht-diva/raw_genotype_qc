@@ -33,7 +33,7 @@ rule inspect_bed_input:
         r"""
         set -euo pipefail
 
-        bash workflow/scripts/inspect_bed_input.sh \
+        bash workflow/scripts/inespect_bed_input.sh \
             --bed "{input.bed}" \
             --bim "{input.bim}" \
             --fam "{input.fam}" \
