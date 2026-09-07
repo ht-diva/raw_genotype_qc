@@ -2,4 +2,4 @@
 results/
 logs/
 data/
-
+*.log
