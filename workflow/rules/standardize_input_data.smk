@@ -184,6 +184,7 @@ rule standardize_genotype:
         plink2 \
             --bfile "{params.source}" \
             --rename-chrs "{input.chromosome_map}" \
+            --sort-vars natural \
             --update-sex "{input.update_sex}" \
             --make-bed \
             --out "{params.prefix}" \
