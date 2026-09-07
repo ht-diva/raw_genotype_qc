@@ -151,7 +151,8 @@ rule prepare_reported_sex:
             --unmatched-metadata "{output.unmatched_metadata}"
         """
 
-rule standardize_genotype:
+
+rule standardize_genotype_pgen:
     input:
         bed=config["bed_path"],
         bim=config["bim_path"],
@@ -159,10 +160,20 @@ rule standardize_genotype:
         chromosome_map=rules.inspect_bed_input.output.chr_map,
         update_sex=rules.prepare_reported_sex.output.update_sex,
     output:
-        bed=ws_path("standardization/genotype.bed"),
-        bim=ws_path("standardization/genotype.bim"),
-        fam=ws_path("standardization/genotype.fam"),
-        log=ws_path("standardization/genotype.log"),
+        pgen=temp(
+            ws_path("standardization/genotype_sorted.pgen")
+        ),
+        pvar=temp(
+            ws_path("standardization/genotype_sorted.pvar")
+        ),
+        psam=temp(
+            ws_path("standardization/genotype_sorted.psam")
+        ),
+        log=temp(
+            ws_path("standardization/genotype_sorted.log")
+        ),
+    container:
+        "docker://gitlab.fht.org:5050/hds-center/containers/plink2:0e8e82d8"
     threads:
         8
     resources:
@@ -172,20 +183,65 @@ rule standardize_genotype:
         source=str(
             Path(config["bed_path"]).with_suffix("")
         ),
-        prefix=ws_path("standardization/genotype"),
-    container:
-        "docker://gitlab.fht.org:5050/hds-center/containers/plink2:0e8e82d8"
+        prefix=ws_path(
+            "standardization/genotype_sorted"
+        ),
     shell:
         r"""
         set -euo pipefail
 
-        mkdir -p "$(dirname "{output.bed}")"
+        mkdir -p "$(dirname "{output.pgen}")"
 
         plink2 \
             --bfile "{params.source}" \
             --rename-chrs "{input.chromosome_map}" \
             --sort-vars natural \
             --update-sex "{input.update_sex}" \
+            --make-pgen \
+            --out "{params.prefix}" \
+            --threads {threads} \
+            --memory {resources.mem_mb}
+        """
+
+
+rule standardize_genotype:
+    input:
+        pgen=rules.standardize_genotype_pgen.output.pgen,
+        pvar=rules.standardize_genotype_pgen.output.pvar,
+        psam=rules.standardize_genotype_pgen.output.psam,
+    output:
+        bed=ws_path(
+            "standardization/genotype.bed"
+        ),
+        bim=ws_path(
+            "standardization/genotype.bim"
+        ),
+        fam=ws_path(
+            "standardization/genotype.fam"
+        ),
+        log=ws_path(
+            "standardization/genotype.log"
+        ),
+    container:
+        "docker://gitlab.fht.org:5050/hds-center/containers/plink2:0e8e82d8"
+    threads:
+        8
+    resources:
+        runtime=90,
+        mem_mb=12000,
+    params:
+        source=ws_path(
+            "standardization/genotype_sorted"
+        ),
+        prefix=ws_path(
+            "standardization/genotype"
+        ),
+    shell:
+        r"""
+        set -euo pipefail
+
+        plink2 \
+            --pfile "{params.source}" \
             --make-bed \
             --out "{params.prefix}" \
             --threads {threads} \
