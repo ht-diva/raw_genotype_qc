@@ -150,3 +150,53 @@ rule prepare_reported_sex:
             --unmatched-genotypes "{output.unmatched_genotypes}" \
             --unmatched-metadata "{output.unmatched_metadata}"
         """
+
+rule standardize_genotype:
+    input:
+        bed=config["bed_path"],
+        bim=config["bim_path"],
+        fam=config["fam_path"],
+        chromosome_map=rules.inspect_bed_input.output.chr_map,
+        update_sex=rules.prepare_reported_sex.output.update_sex,
+    output:
+        bed=ws_path(
+            "standardization/genotype.bed"
+        ),
+        bim=ws_path(
+            "standardization/genotype.bim"
+        ),
+        fam=ws_path(
+            "standardization/genotype.fam"
+        ),
+        log=ws_path(
+            "standardization/genotype.log"
+        ),
+    container:
+        "docker://quay.io/biocontainers/plink2:2.0.0a.6.9--h9948957_0"
+    threads:
+        8
+    resources:
+        runtime=90,
+        mem_mb=12000,
+    params:
+        source=str(
+            Path(config["bed_path"]).with_suffix("")
+        ),
+        prefix=ws_path(
+            "standardization/genotype"
+        ),
+    shell:
+        r"""
+        set -euo pipefail
+
+        mkdir -p "$(dirname "{output.bed}")"
+
+        plink2 \
+            --bfile "{params.source}" \
+            --rename-chrs "{input.chromosome_map}" \
+            --update-sex "{input.update_sex}" \
+            --make-bed \
+            --out "{params.prefix}" \
+            --threads {threads} \
+            --memory {resources.mem_mb}
+        """
