@@ -159,20 +159,10 @@ rule standardize_genotype:
         chromosome_map=rules.inspect_bed_input.output.chr_map,
         update_sex=rules.prepare_reported_sex.output.update_sex,
     output:
-        bed=ws_path(
-            "standardization/genotype.bed"
-        ),
-        bim=ws_path(
-            "standardization/genotype.bim"
-        ),
-        fam=ws_path(
-            "standardization/genotype.fam"
-        ),
-        log=ws_path(
-            "standardization/genotype.log"
-        ),
-    container:
-        "docker://quay.io/biocontainers/plink2:2.0.0a.6.9--h9948957_0"
+        bed=ws_path("standardization/genotype.bed"),
+        bim=ws_path("standardization/genotype.bim"),
+        fam=ws_path("standardization/genotype.fam"),
+        log=ws_path("standardization/genotype.log"),
     threads:
         8
     resources:
@@ -182,9 +172,9 @@ rule standardize_genotype:
         source=str(
             Path(config["bed_path"]).with_suffix("")
         ),
-        prefix=ws_path(
-            "standardization/genotype"
-        ),
+        prefix=ws_path("standardization/genotype"),
+    conda:
+        "docker://gitlab.fht.org:5050/hds-center/containers/plink2:0e8e82d8"
     shell:
         r"""
         set -euo pipefail
