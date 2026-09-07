@@ -9,11 +9,11 @@ fam_path: "/processing_data/shared_datasets/plasma_proteome/believe/raw_data/gen
 # TSV columns: FID, IID, SEX (1=male, 2=female, 0=unknown)
 sample_metadata:
   path: "/processing_data/shared_datasets/plasma_proteome/believe/raw_data/phenotypes/analysis.dta"
-  phenotype_id_col: "ID"
-  sex_col: "SEX"
-  genotype_id_mode: "direct"
-  genotype_id_regex: null
-  id_normalization: "string"
+  phenotype_id_col: "genid"
+  sex_col: "sex"
+  genotype_id_mode: "regex"
+  genotype_id_regex: '^CAMBRIDGE-BELIEVE_([0-9]+)_[0-9]+$'
+  id_normalization: "integer_string"
 
 male_values:
   - 1
