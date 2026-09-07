@@ -30,3 +30,8 @@ set-resources:
     threads: *cores
     mem_mb: 1024 + attempt * 1024
 
+    standardize_genotype:
+      threads: *cores
+      mem_mb: 1024 + attempt * 1024
+
+
