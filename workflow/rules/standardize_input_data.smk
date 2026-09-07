@@ -129,6 +129,8 @@ rule prepare_reported_sex:
                 ),
             )
         ),
+    conda:
+        "../envs/r_environment.yaml"
     shell:
         r"""
         set -euo pipefail
