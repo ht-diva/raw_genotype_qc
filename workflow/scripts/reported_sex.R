@@ -619,9 +619,9 @@ unmatched_metadata_rows <- !(
 
 write.table(
     data.frame(
-        METADATA_ID = metadata[
-            [phenotype_id_column]
-        ][unmatched_metadata_rows],
+        METADATA_ID = metadata[[phenotype_id_column]][
+            unmatched_metadata_rows
+        ],
         MATCH_ID = metadata$MATCH_ID[
             unmatched_metadata_rows
         ]
