@@ -1,4 +1,3 @@
-
 #!/usr/bin/env bash
 
 # Inspect a merged PLINK BED dataset before downstream quality control.
@@ -279,10 +278,7 @@ awk '
             normalized = "Y"
         } else if (normalized == "25") {
             normalized = "XY"
-        } else if (
-            normalized == "26" ||
-            normalized == "M"
-        ) {
+        } else if (normalized == "26" || normalized == "M") {
             normalized = "MT"
         }
 
@@ -342,10 +338,7 @@ awk '
             normalized = "Y"
         } else if (normalized == "25") {
             normalized = "XY"
-        } else if (
-            normalized == "26" ||
-            normalized == "M"
-        ) {
+        } else if (normalized == "26" || normalized == "M") {
             normalized = "MT"
         }
 
@@ -366,11 +359,11 @@ awk '
 raw_chrs=$(
     awk '
         !seen[$1]++ {
-            chromosomes = (
-                chromosomes == "" ?
-                $1 :
-                chromosomes "," $1
-            )
+            if (chromosomes == "") {
+                chromosomes = $1
+            } else {
+                chromosomes = chromosomes "," $1
+            }
         }
 
         END {
@@ -383,11 +376,11 @@ raw_chrs=$(
 std_chrs=$(
     awk '
         !seen[$2]++ {
-            chromosomes = (
-                chromosomes == "" ?
-                $2 :
-                chromosomes "," $2
-            )
+            if (chromosomes == "") {
+                chromosomes = $2
+            } else {
+                chromosomes = chromosomes "," $2
+            }
         }
 
         END {
@@ -454,28 +447,17 @@ unknown=$((n_samples - male - female))
 # 13. Write the final input summary
 # ----------------------------------------------------------
 
-printf \
-    'metric\tvalue\n\
-n_samples\t%s\n\
-n_variants\t%s\n\
-n_duplicate_sample_ids\t%s\n\
-n_duplicate_variant_ids\t%s\n\
-n_duplicate_chr_pos\t%s\n\
-n_missing_variant_ids\t%s\n\
-fam_sex_male\t%s\n\
-fam_sex_female\t%s\n\
-fam_sex_unknown\t%s\n\
-chromosomes_raw\t%s\n\
-chromosomes_standardized\t%s\n' \
-    "$n_samples" \
-    "$n_variants" \
-    "$n_dup_samples" \
-    "$n_dup_ids" \
-    "$n_dup_pos" \
-    "$missing_ids" \
-    "$male" \
-    "$female" \
-    "$unknown" \
-    "$raw_chrs" \
-    "$std_chrs" \
-    > "$summary"
+{
+    printf 'metric\tvalue\n'
+    printf 'n_samples\t%s\n' "$n_samples"
+    printf 'n_variants\t%s\n' "$n_variants"
+    printf 'n_duplicate_sample_ids\t%s\n' "$n_dup_samples"
+    printf 'n_duplicate_variant_ids\t%s\n' "$n_dup_ids"
+    printf 'n_duplicate_chr_pos\t%s\n' "$n_dup_pos"
+    printf 'n_missing_variant_ids\t%s\n' "$missing_ids"
+    printf 'fam_sex_male\t%s\n' "$male"
+    printf 'fam_sex_female\t%s\n' "$female"
+    printf 'fam_sex_unknown\t%s\n' "$unknown"
+    printf 'chromosomes_raw\t%s\n' "$raw_chrs"
+    printf 'chromosomes_standardized\t%s\n' "$std_chrs"
+} > "$summary"
