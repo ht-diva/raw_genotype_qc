@@ -173,7 +173,7 @@ rule standardize_genotype:
             Path(config["bed_path"]).with_suffix("")
         ),
         prefix=ws_path("standardization/genotype"),
-    conda:
+    container:
         "docker://gitlab.fht.org:5050/hds-center/containers/plink2:0e8e82d8"
     shell:
         r"""
