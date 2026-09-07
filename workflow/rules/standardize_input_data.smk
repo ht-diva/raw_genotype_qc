@@ -135,7 +135,7 @@ rule prepare_reported_sex:
         r"""
         set -euo pipefail
 
-        Rscript workflow/scripts/prepare_reported_sex.R \
+        Rscript workflow/scripts/reported_sex.R \
             --fam "{input.fam}" \
             --metadata "{input.metadata}" \
             --phenotype-id-col "{params.phenotype_id_col}" \
