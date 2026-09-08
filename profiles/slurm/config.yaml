@@ -41,7 +41,7 @@ set-resources:
     apply_external_sample_set:
       threads: *cores
       mem_mb: 1024 + attempt * 1024
-      
+
     sample_missingness_report:
       threads: *cores
       mem_mb: 1024 + attempt * 1024

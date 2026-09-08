@@ -32,6 +32,11 @@ rule all:
                 "external_samples/external_samples.report.tsv"
             ),
 
+            # Genotype dataset after external sample selection
+            ws_path("external_samples/genotype.bed"),
+            ws_path("external_samples/genotype.bim"),
+            ws_path("external_samples/genotype.fam"),
+
             # Sample missingness report
             ws_path(
                 "sample_missingness/sample_missingness.smiss"
