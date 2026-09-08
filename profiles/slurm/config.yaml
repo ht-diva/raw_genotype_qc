@@ -1,50 +1,51 @@
 executor: slurm
 jobs: 250
+
 software-deployment-method:
-   - conda
-   - apptainer
+  - conda
+  - apptainer
+
 retries: 3
 max-jobs-per-second: 10
 max-status-checks-per-second: 1
 local-cores: 1
-cores: &cores 8
+cores: 8
 latency-wait: 60
-keep-going: True
-rerun-incomplete: True
-printshellcmds: True
+keep-going: true
+rerun-incomplete: true
+printshellcmds: true
 scheduler: ilp
 
 default-resources:
-  default-resources:
-    slurm_partition: cpuq
+  slurm_partition: cpuq
+  mem_mb: 2048
+  runtime: 30
+
+set-resources:
+  inspect_bed_input:
     mem_mb: 2048
-    runtime: 30
+    runtime: 5
 
-  set-resources:
-    inspect_bed_input:
-      mem_mb: 2048
-      runtime: 5
+  prepare_reported_sex:
+    mem_mb: 4096
+    runtime: 15
 
-    prepare_reported_sex:
-      mem_mb: 4096
-      runtime: 15
+  standardize_genotype_pgen:
+    mem_mb: 12000
+    runtime: 90
 
-    standardize_genotype_pgen:
-      mem_mb: 12000
-      runtime: 90
+  standardize_genotype:
+    mem_mb: 12000
+    runtime: 90
 
-    standardize_genotype:
-      mem_mb: 12000
-      runtime: 90
+  build_external_sample_set:
+    mem_mb: 2048
+    runtime: 15
 
-    build_external_sample_set:
-      mem_mb: 2048
-      runtime: 15
+  apply_external_sample_set:
+    mem_mb: 12000
+    runtime: 90
 
-    apply_external_sample_set:
-      mem_mb: 12000
-      runtime: 90
-
-    sample_missingness_report:
-      mem_mb: 8000
-      runtime: 60
+  sample_missingness_report:
+    mem_mb: 8000
+    runtime: 60
