@@ -41,6 +41,50 @@ rule build_external_sample_set:
             --remove-files "{params.remove_files}"
         """
 
+rule apply_external_sample_set:
+    input:
+        bed=rules.standardize_genotype.output.bed,
+        bim=rules.standardize_genotype.output.bim,
+        fam=rules.standardize_genotype.output.fam,
+        keep=rules.build_external_sample_set.output.keep,
+    output:
+        bed=ws_path(
+            "external_samples/genotype.bed"
+        ),
+        bim=ws_path(
+            "external_samples/genotype.bim"
+        ),
+        fam=ws_path(
+            "external_samples/genotype.fam"
+        ),
+        log=ws_path(
+            "external_samples/genotype.log"
+        ),
+    container:
+        "docker://gitlab.fht.org:5050/hds-center/containers/plink2:0e8e82d8"
+    threads:
+        8
+    resources:
+        runtime=90,
+        mem_mb=12000,
+    params:
+        source=ws_path("standardization/genotype"),
+        prefix=ws_path("external_samples/genotype"),
+    shell:
+        r"""
+        set -euo pipefail
+
+        mkdir -p "$(dirname "{output.bed}")"
+
+        plink2 \
+            --bfile "{params.source}" \
+            --keep "{input.keep}" \
+            --make-bed \
+            --out "{params.prefix}" \
+            --threads {threads} \
+            --memory {resources.mem_mb}
+        """
+
 rule sample_missingness_report:
     input:
         # Standardized genotype dataset after applying external
