@@ -15,37 +15,36 @@ printshellcmds: True
 scheduler: ilp
 
 default-resources:
+  default-resources:
     slurm_partition: cpuq
-    # slurm_account: ${USER}
-    mem_mb: attempt * 1024
-    threads: 1
-    runtime: attempt * 5
+    mem_mb: 2048
+    runtime: 30
 
-set-resources:
-  inspect_bed_input:
-    threads: *cores
-    mem_mb: 1024 + attempt * 1024
+  set-resources:
+    inspect_bed_input:
+      mem_mb: 2048
+      runtime: 5
 
-  prepare_reported_sex:
-    threads: *cores
-    mem_mb: 1024 + attempt * 1024
+    prepare_reported_sex:
+      mem_mb: 4096
+      runtime: 15
+
+    standardize_genotype_pgen:
+      mem_mb: 12000
+      runtime: 90
 
     standardize_genotype:
-      threads: *cores
-      mem_mb: 1024 + attempt * 1024
+      mem_mb: 12000
+      runtime: 90
 
     build_external_sample_set:
-      threads: *cores
-      mem_mb: 1024 + attempt * 1024
+      mem_mb: 2048
+      runtime: 15
 
     apply_external_sample_set:
-      threads: *cores
-      mem_mb: 1024 + attempt * 1024
+      mem_mb: 12000
+      runtime: 90
 
     sample_missingness_report:
-      threads: *cores
-      mem_mb: 1024 + attempt * 1024
-
-
-
-
+      mem_mb: 8000
+      runtime: 60
