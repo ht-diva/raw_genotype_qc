@@ -7,6 +7,7 @@ include: "workflow/rules/common.smk"
 
 rule all:
     input:
+
         # Input inspection
         ws_path("standardization/input.ok"),
         ws_path("standardization/input.summary.tsv"),
@@ -25,3 +26,4 @@ rule all:
 
 # Include only modules which are currently implemented.
 include: "workflow/rules/standardize_input_data.smk"
+include: "workflow/rules/sample_missingness.smk"
