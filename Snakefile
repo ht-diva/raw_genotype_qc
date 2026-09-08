@@ -31,6 +31,14 @@ rule all:
             ws_path(
                 "external_samples/external_samples.report.tsv"
             ),
+
+            # Sample missingness report
+            ws_path(
+                "sample_missingness/sample_missingness.smiss"
+            ),
+            ws_path(
+                "sample_missingness/sample_missingness.log"
+            ),
         ]
 
 
