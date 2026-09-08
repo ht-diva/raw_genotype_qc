@@ -34,4 +34,9 @@ set-resources:
       threads: *cores
       mem_mb: 1024 + attempt * 1024
 
+    build_external_sample_set:
+      threads: *cores
+      mem_mb: 1024 + attempt * 1024
+
+
 
