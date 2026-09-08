@@ -1,27 +1,14 @@
 #!/usr/bin/env Rscript
 
-# Build the list of samples eligible for downstream genotype QC.
-#
-# Starting from all samples in a PLINK FAM file, this script:
-#   1. Applies the intersection of any external keep files.
-#   2. Applies the union of any external remove files.
-#   3. Writes a PLINK-compatible FID/IID keep file.
-#   4. Reports excluded samples and summary counts.
-
-
-# ----------------------------------------------------------
-# 1. Load packages
-# ----------------------------------------------------------
-
 suppressPackageStartupMessages({
     library(optparse)
     library(data.table)
 })
 
 
-# ----------------------------------------------------------
-# 2. Parse command-line options
-# ----------------------------------------------------------
+# -------------------------------------------------------------------------
+# 1. Parse command-line arguments
+# -------------------------------------------------------------------------
 
 option_list <- list(
     make_option(
@@ -32,7 +19,7 @@ option_list <- list(
     make_option(
         "--keep-output",
         type = "character",
-        help = "Output PLINK FID/IID keep file"
+        help = "Output PLINK keep file"
     ),
     make_option(
         "--exclusions-output",
@@ -48,24 +35,24 @@ option_list <- list(
         "--keep-files",
         type = "character",
         default = "",
-        help = "Semicolon-delimited list of external keep files"
+        help = "Semicolon-separated list of sample keep files"
     ),
     make_option(
         "--remove-files",
         type = "character",
         default = "",
-        help = "Semicolon-delimited list of external remove files"
+        help = "Semicolon-separated list of sample removal files"
     )
 )
 
-options <- parse_args(
+opt <- parse_args(
     OptionParser(option_list = option_list)
 )
 
 
-# ----------------------------------------------------------
-# 3. Check required options
-# ----------------------------------------------------------
+# -------------------------------------------------------------------------
+# 2. Check required arguments
+# -------------------------------------------------------------------------
 
 required_options <- c(
     "fam",
@@ -75,7 +62,7 @@ required_options <- c(
 )
 
 for (option_name in required_options) {
-    if (is.null(options[[option_name]])) {
+    if (is.null(opt[[option_name]])) {
         stop(
             paste("Missing required option:", option_name),
             call. = FALSE
@@ -84,12 +71,12 @@ for (option_name in required_options) {
 }
 
 
-# ----------------------------------------------------------
-# 4. Read and validate the FAM file
-# ----------------------------------------------------------
+# -------------------------------------------------------------------------
+# 3. Read the PLINK FAM file
+# -------------------------------------------------------------------------
 
 fam <- fread(
-    options$fam,
+    opt$fam,
     header = FALSE,
     data.table = FALSE,
     colClasses = "character"
@@ -97,13 +84,13 @@ fam <- fread(
 
 if (ncol(fam) < 6) {
     stop(
-        "Malformed FAM: fewer than six columns",
+        "Malformed FAM file: fewer than six columns were found.",
         call. = FALSE
     )
 }
 
-# Retain the six standard PLINK FAM columns.
-fam <- fam[, 1:6]
+# Retain only the six standard PLINK FAM columns.
+fam <- fam[, 1:6, drop = FALSE]
 
 names(fam) <- c(
     "FID",
@@ -114,27 +101,32 @@ names(fam) <- c(
     "PHENO"
 )
 
-
-# ----------------------------------------------------------
-# 5. Parse configured file lists
-# ----------------------------------------------------------
-
-# Snakemake passes multiple paths as one semicolon-delimited string.
-parse_file_list <- function(value) {
-    missing_value <- (
-        is.null(value) ||
-        value == "" ||
-        value == "NA" ||
-        value == "None"
+if (nrow(fam) == 0) {
+    stop(
+        "The input FAM file contains no samples.",
+        call. = FALSE
     )
+}
 
-    if (missing_value) {
-        return(character())
+
+# -------------------------------------------------------------------------
+# 4. Parse semicolon-separated file lists
+# -------------------------------------------------------------------------
+
+parse_files <- function(value) {
+    if (
+        is.null(value) ||
+        length(value) == 0 ||
+        is.na(value) ||
+        trimws(value) == "" ||
+        tolower(trimws(value)) %in% c("na", "none")
+    ) {
+        return(character(0))
     }
 
     paths <- strsplit(
         value,
-        ";",
+        split = ";",
         fixed = TRUE
     )[[1]]
 
@@ -142,12 +134,27 @@ parse_file_list <- function(value) {
     paths[nzchar(paths)]
 }
 
+keep_files <- parse_files(opt$`keep-files`)
+remove_files <- parse_files(opt$`remove-files`)
 
-# ----------------------------------------------------------
-# 6. Read sample IDs from an external file
-# ----------------------------------------------------------
 
-read_sample_ids <- function(path) {
+# -------------------------------------------------------------------------
+# 5. Read sample IDs from an external keep/remove file
+# -------------------------------------------------------------------------
+#
+# Supported formats:
+#
+#   IID
+#
+# or:
+#
+#   FID IID
+#
+# Empty lines, comments beginning with "#", and common headers are ignored.
+# Only sample IDs present in the input FAM file are returned.
+# -------------------------------------------------------------------------
+
+read_sample_ids <- function(path, fam_data) {
     if (!file.exists(path)) {
         stop(
             paste("Sample file not found:", path),
@@ -162,187 +169,236 @@ read_sample_ids <- function(path) {
 
     lines <- trimws(lines)
 
-    # Ignore empty lines and comment lines.
+    # Remove empty lines and comment lines.
     lines <- lines[
         nzchar(lines) &
         !grepl("^#", lines)
     ]
 
-    if (!length(lines)) {
-        return(character())
+    if (length(lines) == 0) {
+        return(character(0))
     }
 
     fields <- strsplit(
         lines,
-        "[[:space:]]+"
+        split = "[[:space:]]+"
     )
 
-    matched_ids <- character()
+    sample_ids <- character(0)
 
-    for (fields_in_line in fields) {
-        if (!length(fields_in_line)) {
+    for (values in fields) {
+        if (length(values) == 0) {
             next
         }
 
-        first_field <- sub(
-            "^#",
-            "",
-            fields_in_line[1]
+        first_value <- toupper(
+            sub("^#", "", values[1])
         )
 
-        # Ignore common FID/IID header lines.
-        if (toupper(first_field) %in% c("FID", "IID")) {
+        # Skip common header rows.
+        if (first_value %in% c("FID", "IID")) {
             next
         }
 
-        # For two-column PLINK files, prefer the second field (IID).
+        # For two-column files, preferentially interpret the second
+        # column as IID. Otherwise, interpret the first column as IID.
         if (
-            length(fields_in_line) >= 2 &&
-            fields_in_line[2] %in% fam$IID
+            length(values) >= 2 &&
+            values[2] %in% fam_data$IID
         ) {
-            matched_ids <- c(
-                matched_ids,
-                fields_in_line[2]
+            sample_ids <- c(
+                sample_ids,
+                values[2]
             )
-        } else if (fields_in_line[1] %in% fam$IID) {
-            # Also support one-column IID files.
-            matched_ids <- c(
-                matched_ids,
-                fields_in_line[1]
+        } else if (values[1] %in% fam_data$IID) {
+            sample_ids <- c(
+                sample_ids,
+                values[1]
             )
         }
     }
 
-    unique(matched_ids)
+    unique(sample_ids)
 }
 
 
-# ----------------------------------------------------------
-# 7. Apply external keep files
-# ----------------------------------------------------------
+# -------------------------------------------------------------------------
+# 6. Apply external keep files
+# -------------------------------------------------------------------------
+#
+# If multiple keep files are supplied, their intersection is used:
+# a sample must occur in every keep file to remain eligible.
+#
+# If no keep file is supplied, all samples initially remain eligible.
+# -------------------------------------------------------------------------
 
-# Start with every sample in the FAM file.
 eligible_ids <- unique(fam$IID)
 
 report_rows <- list()
-report_index <- 1
+report_index <- 1L
 
-keep_files <- parse_file_list(
-    options$`keep-files`
-)
-
-# When multiple keep files are provided, a sample must occur
-# in every file to remain eligible.
-for (path in keep_files) {
-    ids_in_file <- read_sample_ids(path)
+for (keep_file in keep_files) {
+    file_ids <- read_sample_ids(
+        keep_file,
+        fam
+    )
 
     eligible_ids <- intersect(
         eligible_ids,
-        ids_in_file
+        file_ids
     )
 
     report_rows[[report_index]] <- data.frame(
-        file = path,
+        file = keep_file,
         operation = "KEEP_INTERSECTION",
-        matched_ids = length(ids_in_file)
+        matched_ids = length(file_ids),
+        stringsAsFactors = FALSE
     )
 
-    report_index <- report_index + 1
+    report_index <- report_index + 1L
 }
 
 
-# ----------------------------------------------------------
-# 8. Apply external remove files
-# ----------------------------------------------------------
+# -------------------------------------------------------------------------
+# 7. Apply external removal files
+# -------------------------------------------------------------------------
+#
+# If multiple removal files are supplied, their union is used:
+# a sample appearing in any removal file is excluded.
+# -------------------------------------------------------------------------
 
-remove_files <- parse_file_list(
-    options$`remove-files`
-)
+remove_ids <- character(0)
 
-excluded_ids <- character()
+for (remove_file in remove_files) {
+    file_ids <- read_sample_ids(
+        remove_file,
+        fam
+    )
 
-# When multiple remove files are provided, a sample is excluded
-# when it occurs in at least one file.
-for (path in remove_files) {
-    ids_in_file <- read_sample_ids(path)
-
-    excluded_ids <- union(
-        excluded_ids,
-        ids_in_file
+    remove_ids <- union(
+        remove_ids,
+        file_ids
     )
 
     report_rows[[report_index]] <- data.frame(
-        file = path,
+        file = remove_file,
         operation = "REMOVE_UNION",
-        matched_ids = length(ids_in_file)
+        matched_ids = length(file_ids),
+        stringsAsFactors = FALSE
     )
 
-    report_index <- report_index + 1
+    report_index <- report_index + 1L
 }
 
 
-# ----------------------------------------------------------
-# 9. Build final sample tables
-# ----------------------------------------------------------
+# -------------------------------------------------------------------------
+# 8. Determine the final eligible and excluded samples
+# -------------------------------------------------------------------------
 
 final_ids <- setdiff(
     eligible_ids,
-    excluded_ids
+    remove_ids
 )
 
-# PLINK-compatible FID/IID keep table.
 kept_samples <- fam[
     fam$IID %in% final_ids,
-    c("FID", "IID")
+    c("FID", "IID"),
+    drop = FALSE
 ]
 
-# Samples not retained for downstream QC.
 excluded_samples <- fam[
     !fam$IID %in% final_ids,
-    c("FID", "IID")
+    c("FID", "IID"),
+    drop = FALSE
 ]
 
-excluded_samples$REASON <- "external_or_eligibility_exclusion"
+# rep(..., nrow(...)) works correctly even when there are no exclusions.
+excluded_samples$REASON <- rep(
+    "external_or_eligibility_exclusion",
+    nrow(excluded_samples)
+)
 
 
-# ----------------------------------------------------------
-# 10. Write sample outputs
-# ----------------------------------------------------------
+# -------------------------------------------------------------------------
+# 9. Create output directories
+# -------------------------------------------------------------------------
 
-# PLINK --keep expects FID and IID without a header.
+output_paths <- c(
+    opt$`keep-output`,
+    opt$`exclusions-output`,
+    opt$report
+)
+
+for (output_path in output_paths) {
+    output_directory <- dirname(output_path)
+
+    if (
+        !dir.exists(output_directory) &&
+        !dir.create(
+            output_directory,
+            recursive = TRUE,
+            showWarnings = FALSE
+        )
+    ) {
+        stop(
+            paste(
+                "Could not create output directory:",
+                output_directory
+            ),
+            call. = FALSE
+        )
+    }
+}
+
+
+# -------------------------------------------------------------------------
+# 10. Write the PLINK keep file
+# -------------------------------------------------------------------------
+#
+# PLINK expects two columns without a header:
+#
+#   FID IID
+# -------------------------------------------------------------------------
+
 write.table(
     kept_samples,
-    file = options$`keep-output`,
+    file = opt$`keep-output`,
     sep = "\t",
     row.names = FALSE,
     col.names = FALSE,
     quote = FALSE
 )
 
-# The exclusions report includes a header and exclusion reason.
+
+# -------------------------------------------------------------------------
+# 11. Write the exclusions table
+# -------------------------------------------------------------------------
+
 write.table(
     excluded_samples,
-    file = options$`exclusions-output`,
+    file = opt$`exclusions-output`,
     sep = "\t",
     row.names = FALSE,
+    col.names = TRUE,
     quote = FALSE
 )
 
 
-# ----------------------------------------------------------
-# 11. Build and write the summary report
-# ----------------------------------------------------------
+# -------------------------------------------------------------------------
+# 12. Build and write the summary report
+# -------------------------------------------------------------------------
 
-if (length(report_rows)) {
+if (length(report_rows) > 0) {
     report <- do.call(
         rbind,
         report_rows
     )
 } else {
     report <- data.frame(
-        file = character(),
-        operation = character(),
-        matched_ids = integer()
+        file = character(0),
+        operation = character(0),
+        matched_ids = integer(0),
+        stringsAsFactors = FALSE
     )
 }
 
@@ -357,7 +413,8 @@ total_report <- data.frame(
         nrow(fam),
         nrow(kept_samples),
         nrow(excluded_samples)
-    )
+    ),
+    stringsAsFactors = FALSE
 )
 
 report <- rbind(
@@ -367,8 +424,9 @@ report <- rbind(
 
 write.table(
     report,
-    file = options$report,
+    file = opt$report,
     sep = "\t",
     row.names = FALSE,
+    col.names = TRUE,
     quote = FALSE
 )
