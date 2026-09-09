@@ -56,6 +56,12 @@ rule all:
             ws_path(
                 "sample_missingness/mind_filter.log"
             ),
+
+            # Final genotype dataset after sample missingness filtering
+            ws_path("sample_missingness/genotype.bed"),
+            ws_path("sample_missingness/genotype.bim"),
+            ws_path("sample_missingness/genotype.fam"),
+            ws_path("sample_missingness/genotype.log"),
         ]
 
 

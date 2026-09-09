@@ -228,3 +228,60 @@ rule sample_missingness_keep:
 
         cp "{params.prefix}.id" "{output.keep}"
         """
+
+rule apply_sample_missingness:
+    input:
+        # PLINK dataset after applying external sample exclusions.
+        bed=rules.apply_external_sample_set.output.bed,
+        bim=rules.apply_external_sample_set.output.bim,
+        fam=rules.apply_external_sample_set.output.fam,
+
+        # Samples passing the configured missingness threshold.
+        keep=rules.sample_missingness_keep.output.keep,
+    output:
+        # Final PLINK dataset after sample missingness filtering.
+        bed=ws_path(
+            "sample_missingness/genotype.bed"
+        ),
+        bim=ws_path(
+            "sample_missingness/genotype.bim"
+        ),
+        fam=ws_path(
+            "sample_missingness/genotype.fam"
+        ),
+
+        # PLINK execution log.
+        log=ws_path(
+            "sample_missingness/genotype.log"
+        ),
+    container:
+        "docker://gitlab.fht.org:5050/hds-center/containers/plink2:0e8e82d8"
+    threads:
+        8
+    resources:
+        runtime=90,
+        mem_mb=12000,
+    params:
+        # Prefix of the dataset before sample missingness filtering.
+        bfile=ws_path(
+            "external_samples/genotype"
+        ),
+
+        # Prefix of the filtered output dataset.
+        prefix=ws_path(
+            "sample_missingness/genotype"
+        ),
+    shell:
+        r"""
+        set -euo pipefail
+
+        mkdir -p "$(dirname "{output.bed}")"
+
+        plink2 \
+            --bfile "{params.bfile}" \
+            --keep "{input.keep}" \
+            --make-bed \
+            --out "{params.prefix}" \
+            --threads {threads} \
+            --memory {resources.mem_mb}
+        """
