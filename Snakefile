@@ -32,28 +32,33 @@ rule all:
                 "external_samples/external_samples.report.tsv"
             ),
 
-            # Genotype dataset after external sample selection
+            # Dataset after external sample selection
             ws_path("external_samples/genotype.bed"),
             ws_path("external_samples/genotype.bim"),
             ws_path("external_samples/genotype.fam"),
 
-            # Sample missingness report
+            # Sample missingness
             ws_path(
                 "sample_missingness/sample_missingness.smiss"
             ),
             ws_path(
                 "sample_missingness/sample_missingness.log"
             ),
-
             ws_path(
                 "sample_missingness/sample_missingness.png"
             ),
             ws_path(
                 "sample_missingness/sample_missingness.summary.tsv"
             ),
+            ws_path(
+                "sample_missingness/passing_samples.id"
+            ),
+            ws_path(
+                "sample_missingness/mind_filter.log"
+            ),
         ]
 
 
-# Include implemented workflow modules.
+# Include workflow modules.
 include: "workflow/rules/standardize_input_data.smk"
 include: "workflow/rules/sample_missingness.smk"

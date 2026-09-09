@@ -161,3 +161,70 @@ rule plot_sample_missingness:
             --plot {output.png} \
             --summary {output.summary}
         """
+
+rule sample_missingness_keep:
+    input:
+        # Genotype dataset after applying external sample exclusions.
+        bed=rules.apply_external_sample_set.output.bed,
+        bim=rules.apply_external_sample_set.output.bim,
+        fam=rules.apply_external_sample_set.output.fam,
+
+        # Ensures that the missingness report and plot have been reviewed
+        # before applying the sample missingness filter.
+        review=rules.plot_sample_missingness.output.summary,
+    output:
+        # PLINK-compatible list of samples passing the missingness filter.
+        keep=ws_path(
+            "sample_missingness/passing_samples.id"
+        ),
+
+        # PLINK log generated during sample filtering.
+        log=ws_path(
+            "sample_missingness/mind_filter.log"
+        ),
+    container:
+        "docker://gitlab.fht.org:5050/hds-center/containers/plink2:0e8e82d8"
+    threads:
+        8
+    resources:
+        runtime=90,
+        mem_mb=8000,
+    params:
+        # Prefix of the PLINK dataset generated after external
+        # sample selection.
+        bfile=ws_path(
+            "external_samples/genotype"
+        ),
+
+        # Prefix used for the PLINK missingness-filter output.
+        prefix=ws_path(
+            "sample_missingness/mind_filter"
+        ),
+
+        # Maximum allowed proportion of missing genotypes per sample.
+        # The value is read from:
+        #
+        # thresholds:
+        #   sample_missingness: 0.10
+        mind=lambda wc: cfg(
+            "thresholds/sample_missingness",
+            0.10,
+        ),
+    shell:
+        r"""
+        set -euo pipefail
+
+        mkdir -p "$(dirname "{output.keep}")"
+
+        plink2 \
+            --bfile "{params.bfile}" \
+            --autosome \
+            --mind "{params.mind}" \
+            --write-samples \
+            --no-id-header \
+            --out "{params.prefix}" \
+            --threads {threads} \
+            --memory {resources.mem_mb}
+
+        cp "{params.prefix}.id" "{output.keep}"
+        """
