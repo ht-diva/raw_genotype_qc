@@ -74,4 +74,4 @@ rule all:
 # Include workflow modules.
 include: "workflow/rules/standardize_input_data.smk"
 include: "workflow/rules/sample_missingness.smk"
-include: "workflow/rules/heterozygosity.smk"
+include: "workflow/rules/heterozygosity_qc.smk"
