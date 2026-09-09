@@ -148,7 +148,7 @@ rule plot_sample_missingness:
             "sample_missingness/sample_missingness.summary.tsv"
         ),
     conda:
-        "../envs/r_qc.yaml"
+        "../envs/r_environment.yaml"
     params:
         threshold=lambda wc: config.get(
             "sample_qc", {}
