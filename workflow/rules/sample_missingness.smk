@@ -85,6 +85,8 @@ rule apply_external_sample_set:
             --memory {resources.mem_mb}
         """
 
+SAMPLE_MISSINGNESS_PREFIX = ("sample_missingness/sample_missingness")
+
 rule sample_missingness_report:
     input:
         # Standardized genotype dataset after applying external
@@ -135,3 +137,27 @@ rule sample_missingness_report:
             --memory {resources.mem_mb}
         """
 
+rule plot_sample_missingness:
+    input:
+        smiss=rules.sample_missingness_report.output.smiss,
+    output:
+        png=ws_path(
+            "03_sample_missingness/sample_missingness.png"
+        ),
+        summary=ws_path(
+            "03_sample_missingness/sample_missingness.summary.tsv"
+        ),
+    conda:
+        "../envs/r_qc.yaml"
+    params:
+        threshold=lambda wc: config.get(
+            "sample_qc", {}
+        ).get("mind", 0.1),
+    shell:
+        r"""
+        Rscript workflow/scripts/plot_sample_missingness.R \
+            --smiss {input.smiss} \
+            --threshold {params.threshold} \
+            --plot {output.png} \
+            --summary {output.summary}
+        """

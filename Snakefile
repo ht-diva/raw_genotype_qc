@@ -44,6 +44,13 @@ rule all:
             ws_path(
                 "sample_missingness/sample_missingness.log"
             ),
+
+            ws_path(
+                "sample_missingness/sample_missingness.png"
+            ),
+            ws_path(
+                "sample_missingness/sample_missingness.summary.tsv"
+            ),
         ]
 
 
