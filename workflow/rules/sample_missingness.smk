@@ -142,10 +142,10 @@ rule plot_sample_missingness:
         smiss=rules.sample_missingness_report.output.smiss,
     output:
         png=ws_path(
-            "03_sample_missingness/sample_missingness.png"
+            "sample_missingness/sample_missingness.png"
         ),
         summary=ws_path(
-            "03_sample_missingness/sample_missingness.summary.tsv"
+            "sample_missingness/sample_missingness.summary.tsv"
         ),
     conda:
         "../envs/r_qc.yaml"
