@@ -4,10 +4,18 @@ rule create_autosomal_qc_set:
         bim=rules.apply_sample_missingness.output.bim,
         fam=rules.apply_sample_missingness.output.fam,
     output:
-        bed=ws_path(AUTO_QC_PREFIX + ".bed"),
-        bim=ws_path(AUTO_QC_PREFIX + ".bim"),
-        fam=ws_path(AUTO_QC_PREFIX + ".fam"),
-        log=ws_path(AUTO_QC_PREFIX + ".log"),
+        bed=ws_path(
+            "autosomal_qc/genotype.bed"
+        ),
+        bim=ws_path(
+            "autosomal_qc/genotype.bim"
+        ),
+        fam=ws_path(
+            "autosomal_qc/genotype.fam"
+        ),
+        log=ws_path(
+            "autosomal_qc/genotype.log"
+        ),
     container:
         "docker://gitlab.fht.org:5050/hds-center/containers/plink2:0e8e82d8"
     threads:
@@ -16,20 +24,35 @@ rule create_autosomal_qc_set:
         runtime=120,
         mem_mb=16384,
     params:
-        bfile = ws_path(MISSING_PREFIX),
-        prefix = ws_path(AUTO_QC_PREFIX),
-        maf = lambda wc: cfg("variant_qc/maf"),
-        hwe = lambda wc: cfg("variant_qc/hwe"),
+        bfile=ws_path(
+            "sample_missingness/genotype"
+        ),
+        prefix=ws_path(
+            "autosomal_qc/genotype"
+        ),
+        maf=lambda wc: cfg(
+            "thresholds/maf"
+        ),
+        geno=lambda wc: cfg(
+            "thresholds/variant_missingness"
+        ),
+        hwe=lambda wc: cfg(
+            "thresholds/hwe"
+        ),
     shell:
         r"""
+        set -euo pipefail
+
+        mkdir -p "$(dirname "{output.bed}")"
+
         plink2 \
-          --bfile {params.bfile} \
-          --autosome \
-          --maf {params.maf} \
-          --geno {params.geno} \
-          {params.hwe} \
-          --make-bed \
-          --out {params.prefix} \
-          --threads {threads} \
-          --memory {resources.mem_mb}
+            --bfile "{params.bfile}" \
+            --autosome \
+            --maf "{params.maf}" \
+            --geno "{params.geno}" \
+            --hwe "{params.hwe}" \
+            --make-bed \
+            --out "{params.prefix}" \
+            --threads {threads} \
+            --memory {resources.mem_mb}
         """
