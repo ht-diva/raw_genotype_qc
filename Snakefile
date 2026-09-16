@@ -63,15 +63,18 @@ rule all:
             ws_path("sample_missingness/genotype.fam"),
             ws_path("sample_missingness/genotype.log"),
 
-            # Genotype dataset after heterozygosity filtering
-            ws_path("heterozygosity/genotype.bed"),
-            ws_path("heterozygosity/genotype.bim"),
-            ws_path("heterozygosity/genotype.fam"),
-            ws_path("heterozygosity/genotype.log"),
+            # Autosomal dataset for sample QC
+            ws_path("autosomal_qc/genotype.bed"),
+            ws_path("autosomal_qc/genotype.bim"),
+            ws_path("autosomal_qc/genotype.fam"),
+            ws_path("autosomal_qc/genotype.log"),
+
+
         ]
 
 
 # Include workflow modules.
 include: "workflow/rules/standardize_input_data.smk"
 include: "workflow/rules/sample_missingness.smk"
-include: "workflow/rules/heterozygosity_qc.smk"
+include: "workflow/rules/autosomal_qc.smk"
+

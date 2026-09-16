@@ -8,21 +8,28 @@ rule create_autosomal_qc_set:
         bim=ws_path(AUTO_QC_PREFIX + ".bim"),
         fam=ws_path(AUTO_QC_PREFIX + ".fam"),
         log=ws_path(AUTO_QC_PREFIX + ".log"),
-    threads: 8
+    container:
+        "docker://gitlab.fht.org:5050/hds-center/containers/plink2:0e8e82d8"
+    threads:
+        8
     resources:
         runtime=120,
         mem_mb=16384,
     params:
-        plink2=PLINK2,
-        bfile=ws_path(MISSING_PREFIX),
-        prefix=ws_path(AUTO_QC_PREFIX),
-        maf=lambda wc: cfg("variant_qc/maf", 0.01),
-        geno=lambda wc: cfg("variant_qc/geno", 0.1),
-        hwe=lambda wc: hwe_args(),
+        bfile = ws_path(MISSING_PREFIX),
+        prefix = ws_path(AUTO_QC_PREFIX),
+        maf = lambda wc: cfg("variant_qc/maf"),
+        hwe = lambda wc: cfg("variant_qc/hwe"),
     shell:
-        r'''
-        {params.plink2} --bfile {params.bfile} --autosome \
-          --maf {params.maf} --geno {params.geno} {params.hwe} \
-          --make-bed --out {params.prefix} \
-          --threads {threads} --memory 16000
-        '''
+        r"""
+        plink2 \
+          --bfile {params.bfile} \
+          --autosome \
+          --maf {params.maf} \
+          --geno {params.geno} \
+          {params.hwe} \
+          --make-bed \
+          --out {params.prefix} \
+          --threads {threads} \
+          --memory {resources.mem_mb}
+        """
