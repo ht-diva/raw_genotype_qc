@@ -69,6 +69,20 @@ rule all:
             ws_path("autosomal_qc/genotype.fam"),
             ws_path("autosomal_qc/genotype.log"),
 
+            # Heterozygosity QC
+            ws_path("heterozygosity/heterozygosity.het"),
+            ws_path("heterozygosity/heterozygosity.log"),
+            ws_path("heterozygosity/heterozygosity.png"),
+            ws_path("heterozygosity/heterozygosity_exclusions.tsv"),
+            ws_path("heterozygosity/heterozygosity_all_samples.tsv"),
+            ws_path("heterozygosity/heterozygosity.summary.tsv"),
+
+            # Dataset after heterozygosity filtering
+            ws_path("heterozygosity/genotype.bed"),
+            ws_path("heterozygosity/genotype.bim"),
+            ws_path("heterozygosity/genotype.fam"),
+            ws_path("heterozygosity/genotype.log"),
+
 
         ]
 
@@ -77,4 +91,5 @@ rule all:
 include: "workflow/rules/standardize_input_data.smk"
 include: "workflow/rules/sample_missingness.smk"
 include: "workflow/rules/autosomal_qc.smk"
+include: "workflow/rules/heterozygosity_qc.smk"
 
