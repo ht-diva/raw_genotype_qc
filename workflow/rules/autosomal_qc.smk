@@ -33,7 +33,7 @@ rule create_autosomal_qc_set:
             --autosome \
             --maf "{params.maf}" \
             --geno "{params.geno}" \
-            --hwe "{params.hwe}" \
+            --hwe "{params.hwe}" 0 \
             --make-bed \
             --out "{params.prefix}" \
             --threads {threads} \
