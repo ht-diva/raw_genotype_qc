@@ -172,8 +172,8 @@ rule apply_approved_sex_thresholds:
         ),
         fam=rules.create_x_qc_markers.output.fam,
         threshold=lambda wc: cfg(
-            "accepted_sex_threshold",
-            "config/accepted_sex_threshold.yaml",
+            "accepted_sex_thresholds",
+            "config/accepted_sex_thresholds.yaml",
         ),
     output:
         exclusions=ws_path(
