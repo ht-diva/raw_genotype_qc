@@ -11,14 +11,14 @@ include: "workflow/rules/common.smk"
 # Sex-QC manual approval --------------------------------------------------------
 
 SEX_APPROVAL_FILE = cfg(
-    "accepted_sex_threshold",
-    "config/accepted_sex_threshold.yaml",
+    "accepted_sex_thresholds",
+    "config/accepted_sex_thresholds.yaml",
 )
 
 SEX_REVIEW_OUTPUTS = [
     ws_path("review/sex/sex_F_distribution.pdf"),
     ws_path("review/sex/sex_candidate_classification.tsv"),
-    ws_path("review/sex/candidate_sex_threshold.yaml"),
+    ws_path("review/sex/candidate_sex_thresholds.yaml"),
     ws_path("review/sex/sex_qc.summary.tsv"),
 ]
 

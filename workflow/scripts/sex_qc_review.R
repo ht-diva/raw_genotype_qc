@@ -5,7 +5,7 @@ suppressPackageStartupMessages({
   library(data.table)
 })
 
-# Command-line arguments --------------------------------------------------------
+# Command-line options ----------------------------------------------------------
 
 option_list <- list(
   make_option(
@@ -19,13 +19,14 @@ option_list <- list(
     help = "PLINK FAM file"
   ),
   make_option(
-    "--threshold",
+    "--female-max-f",
     type = "double",
-    help = paste(
-      "Fixed chrX F threshold:",
-      "F <= threshold is female;",
-      "F > threshold is male"
-    )
+    help = "Maximum chrX F for genetic females"
+  ),
+  make_option(
+    "--male-min-f",
+    type = "double",
+    help = "Minimum chrX F for genetic males"
   ),
   make_option(
     "--plot",
@@ -38,7 +39,7 @@ option_list <- list(
     help = "Output sample-level classification TSV"
   ),
   make_option(
-    "--candidate-threshold",
+    "--candidate-thresholds",
     type = "character",
     help = "Output candidate-threshold YAML"
   ),
@@ -58,10 +59,11 @@ args <- parse_args(
 required_args <- c(
   "sexcheck",
   "fam",
-  "threshold",
+  "female-max-f",
+  "male-min-f",
   "plot",
   "table",
-  "candidate-threshold",
+  "candidate-thresholds",
   "summary"
 )
 
@@ -83,11 +85,22 @@ if (length(missing_args)) {
   )
 }
 
-threshold <- args$threshold
+female_max_f <- args[["female-max-f"]]
+male_min_f <- args[["male-min-f"]]
 
-if (!is.finite(threshold)) {
+if (
+  !is.finite(female_max_f) ||
+  !is.finite(male_min_f)
+) {
   stop(
-    "--threshold must be a finite number.",
+    "Sex-QC thresholds must be finite numbers.",
+    call. = FALSE
+  )
+}
+
+if (female_max_f >= male_min_f) {
+  stop(
+    "female-max-f must be lower than male-min-f.",
     call. = FALSE
   )
 }
@@ -97,7 +110,7 @@ if (!is.finite(threshold)) {
 output_paths <- c(
   args$plot,
   args$table,
-  args[["candidate-threshold"]],
+  args[["candidate-thresholds"]],
   args$summary
 )
 
@@ -162,7 +175,7 @@ if (anyDuplicated(sexcheck[sexcheck_id_columns])) {
   )
 }
 
-# Read FAM file -----------------------------------------------------------------
+# Read FAM ----------------------------------------------------------------------
 
 fam <- fread(
   args$fam,
@@ -196,7 +209,7 @@ if (anyDuplicated(fam[c("FID", "IID")])) {
   )
 }
 
-# Join FAM and sex-check records ------------------------------------------------
+# Join FAM and sex-check results ------------------------------------------------
 
 fam$.FAM_ORDER <- seq_len(nrow(fam))
 
@@ -235,7 +248,7 @@ if (nrow(samples) != nrow(fam)) {
 
 # Standardize reported sex ------------------------------------------------------
 
-# PLINK sex codes:
+# PLINK codes:
 #   1 = male
 #   2 = female
 #   0 = unknown
@@ -249,26 +262,25 @@ samples$REPORTED_SEX[
     !samples$REPORTED_SEX %in% c(1L, 2L)
 ] <- 0L
 
-# Classify genetic sex using the fixed threshold --------------------------------
+# Classify genetic sex ----------------------------------------------------------
 
-# Classification:
-#   F <= threshold = female
-#   F > threshold  = male
-#   missing F      = unknown
+# F <= female_max_f = female
+# F >= male_min_f   = male
+# Values between the thresholds remain ambiguous.
 
 samples$GENETIC_SEX <- 0L
 
 samples$GENETIC_SEX[
   is.finite(samples$F) &
-    samples$F <= threshold
+    samples$F <= female_max_f
 ] <- 2L
 
 samples$GENETIC_SEX[
   is.finite(samples$F) &
-    samples$F > threshold
+    samples$F >= male_min_f
 ] <- 1L
 
-# Add readable sex labels -------------------------------------------------------
+# Add readable labels -----------------------------------------------------------
 
 sex_labels <- c(
   `0` = "unknown",
@@ -290,26 +302,31 @@ samples$GENETIC_SEX_LABEL <- unname(
 
 # Compare reported and genetic sex ---------------------------------------------
 
+has_f_value <- is.finite(samples$F)
+
 has_reported_sex <-
   samples$REPORTED_SEX %in% c(1L, 2L)
 
 has_genetic_sex <-
   samples$GENETIC_SEX %in% c(1L, 2L)
 
-has_f_value <- is.finite(samples$F)
-
 samples$REPORTED_GENETIC_SEX_MATCH <-
   has_reported_sex &
   has_genetic_sex &
   samples$REPORTED_SEX == samples$GENETIC_SEX
 
-# Assign QC status --------------------------------------------------------------
+# Assign status -----------------------------------------------------------------
 
 samples$STATUS <- "OK"
 
 samples$STATUS[
   !has_f_value
 ] <- "MISSING_GENETIC_SEX"
+
+samples$STATUS[
+  has_f_value &
+    !has_genetic_sex
+] <- "AMBIGUOUS_GENETIC_SEX"
 
 samples$STATUS[
   has_reported_sex &
@@ -322,11 +339,16 @@ samples$STATUS[
   samples$REPORTED_SEX == 0L
 ] <- "REPORTED_SEX_UNKNOWN"
 
-# With one threshold, every finite F value is classified.
-# Therefore, there is no ambiguous interval.
-samples$EXCLUDE <- samples$STATUS == "DISCORDANT"
+# Candidate exclusions:
+#   - reported/genetic sex discordance
+#   - F inside the ambiguous interval
+samples$EXCLUDE <-
+  samples$STATUS %in% c(
+    "DISCORDANT",
+    "AMBIGUOUS_GENETIC_SEX"
+  )
 
-# Write the sample-level comparison table --------------------------------------
+# Write sample-level classification --------------------------------------------
 
 output_columns <- c(
   "FID",
@@ -350,20 +372,31 @@ write.table(
   na = "NA"
 )
 
-# Write fixed candidate threshold ----------------------------------------------
+# Write candidate thresholds ---------------------------------------------------
+
+# These values come directly from config.yaml.
+# No empirical threshold is calculated.
 
 writeLines(
   c(
-    "# Fixed candidate threshold; manual approval is required.",
+    "# Fixed candidate thresholds; manual approval required.",
     sprintf(
-      "sex_f_threshold: %.8g",
-      threshold
+      "female_max_f: %.8g",
+      female_max_f
+    ),
+    sprintf(
+      "male_min_f: %.8g",
+      male_min_f
     )
   ),
-  args[["candidate-threshold"]]
+  args[["candidate-thresholds"]]
 )
 
 # Create diagnostic plots -------------------------------------------------------
+
+finite_f <- samples$F[
+  is.finite(samples$F)
+]
 
 reported_female_f <- samples$F[
   samples$REPORTED_SEX == 2L &
@@ -375,10 +408,6 @@ reported_male_f <- samples$F[
     is.finite(samples$F)
 ]
 
-finite_f <- samples$F[
-  is.finite(samples$F)
-]
-
 pdf(
   args$plot,
   width = 9,
@@ -386,7 +415,7 @@ pdf(
 )
 
 if (length(finite_f)) {
-  # First plot: distribution of all finite F values.
+  # Page 1: overall F distribution.
   hist(
     finite_f,
     breaks = 80,
@@ -397,63 +426,72 @@ if (length(finite_f)) {
   )
 
   abline(
-    v = threshold,
-    col = "black",
+    v = c(female_max_f, male_min_f),
+    col = c("red", "blue"),
     lty = 2,
     lwd = 2
   )
 
   legend(
     "topright",
-    legend = sprintf(
-      "Fixed threshold = %.4g",
-      threshold
+    legend = c(
+      sprintf(
+        "Female maximum F = %.4g",
+        female_max_f
+      ),
+      sprintf(
+        "Male minimum F = %.4g",
+        male_min_f
+      )
     ),
-    col = "black",
+    col = c("red", "blue"),
     lty = 2,
     lwd = 2,
     bty = "n"
   )
 
-  # Second plot: F values grouped by reported sex.
-  female_plot_values <- if (length(reported_female_f)) {
-    reported_female_f
-  } else {
-    NA_real_
+  # Page 2: F distribution by reported sex.
+  plot_groups <- list()
+
+  if (length(reported_female_f)) {
+    plot_groups[["Reported female"]] <-
+      reported_female_f
   }
 
-  male_plot_values <- if (length(reported_male_f)) {
-    reported_male_f
-  } else {
-    NA_real_
+  if (length(reported_male_f)) {
+    plot_groups[["Reported male"]] <-
+      reported_male_f
   }
 
-  boxplot(
-    list(
-      "Reported female" = female_plot_values,
-      "Reported male" = male_plot_values
-    ),
-    col = c(
-      rgb(1, 0, 0, 0.35),
-      rgb(0, 0, 1, 0.35)
-    ),
-    ylab = "chrX inbreeding coefficient (F)",
-    main = "chrX F by reported sex"
-  )
+  if (length(plot_groups)) {
+    boxplot(
+      plot_groups,
+      col = c(
+        rgb(1, 0, 0, 0.35),
+        rgb(0, 0, 1, 0.35)
+      )[seq_along(plot_groups)],
+      main = "chrX F by reported sex",
+      ylab = "chrX inbreeding coefficient (F)"
+    )
 
-  abline(
-    h = threshold,
-    col = "black",
-    lty = 2,
-    lwd = 2
-  )
+    abline(
+      h = c(female_max_f, male_min_f),
+      col = c("red", "blue"),
+      lty = 2,
+      lwd = 2
+    )
+  } else {
+    plot.new()
+    title("chrX F by reported sex")
+    text(
+      0.5,
+      0.5,
+      "No samples with known reported sex"
+    )
+  }
 } else {
   plot.new()
-
-  title(
-    "chrX F distribution"
-  )
-
+  title("chrX F distribution")
   text(
     0.5,
     0.5,
@@ -467,27 +505,40 @@ dev.off()
 
 summary_table <- data.frame(
   metric = c(
-    "sex_f_threshold",
+    "female_max_f",
+    "male_min_f",
     "n_samples",
     "n_samples_with_f",
     "n_genetic_female",
     "n_genetic_male",
     "n_reported_genetic_match",
     "n_discordant",
+    "n_ambiguous",
     "n_missing_genetic_sex",
     "n_reported_sex_unknown",
     "n_excluded"
   ),
   value = c(
-    threshold,
+    female_max_f,
+    male_min_f,
     nrow(samples),
     sum(has_f_value),
     sum(samples$GENETIC_SEX == 2L),
     sum(samples$GENETIC_SEX == 1L),
     sum(samples$REPORTED_GENETIC_SEX_MATCH),
     sum(samples$STATUS == "DISCORDANT"),
-    sum(samples$STATUS == "MISSING_GENETIC_SEX"),
-    sum(samples$STATUS == "REPORTED_SEX_UNKNOWN"),
+    sum(
+      samples$STATUS ==
+        "AMBIGUOUS_GENETIC_SEX"
+    ),
+    sum(
+      samples$STATUS ==
+        "MISSING_GENETIC_SEX"
+    ),
+    sum(
+      samples$STATUS ==
+        "REPORTED_SEX_UNKNOWN"
+    ),
     sum(samples$EXCLUDE)
   ),
   stringsAsFactors = FALSE

@@ -73,14 +73,18 @@ rule create_x_qc_markers:
             --memory 11000
         """
 
-rule check_sex_candidate_threshold:
+rule check_sex_candidate_thresholds:
     input:
         bed=rules.create_x_qc_markers.output.bed,
         bim=rules.create_x_qc_markers.output.bim,
         fam=rules.create_x_qc_markers.output.fam,
     output:
-        sexcheck=ws_path("sex_qc/sex_candidate.sexcheck"),
-        log=ws_path("sex_qc/sex_candidate.log"),
+        sexcheck=ws_path(
+            "sex_qc/sex_candidate.sexcheck"
+        ),
+        log=ws_path(
+            "sex_qc/sex_candidate.log"
+        ),
     container:
         "docker://gitlab.fht.org:5050/hds-center/containers/plink2:0e8e82d8"
     threads:
@@ -89,10 +93,17 @@ rule check_sex_candidate_threshold:
         runtime=60,
         mem_mb=8000,
     params:
-        bfile=ws_path("sex_qc/x_qc/genotype"),
-        prefix=ws_path("sex_qc/sex_candidate"),
-        threshold=lambda wc: cfg(
-            "thresholds/sex_f_threshold"
+        bfile=ws_path(
+            "sex_qc/x_qc/genotype"
+        ),
+        prefix=ws_path(
+            "sex_qc/sex_candidate"
+        ),
+        female_max=lambda wc: cfg(
+            "thresholds/female_max_f"
+        ),
+        male_min=lambda wc: cfg(
+            "thresholds/male_min_f"
         ),
     shell:
         r"""
@@ -101,8 +112,8 @@ rule check_sex_candidate_threshold:
         plink2 \
             --bfile "{params.bfile}" \
             --check-sex \
-                max-female-xf="{params.threshold}" \
-                min-male-xf="{params.threshold}" \
+                max-female-xf="{params.female_max}" \
+                min-male-xf="{params.male_min}" \
             --out "{params.prefix}" \
             --threads {threads} \
             --memory 7500
@@ -111,7 +122,7 @@ rule check_sex_candidate_threshold:
 rule sex_qc_review:
     input:
         sexcheck=(
-            rules.check_sex_candidate_threshold.output.sexcheck
+            rules.check_sex_candidate_thresholds.output.sexcheck
         ),
         fam=rules.create_x_qc_markers.output.fam,
     output:
@@ -121,8 +132,8 @@ rule sex_qc_review:
         table=ws_path(
             "review/sex/sex_candidate_classification.tsv"
         ),
-        candidate_threshold=ws_path(
-            "review/sex/candidate_sex_threshold.yaml"
+        candidate_thresholds=ws_path(
+            "review/sex/candidate_sex_thresholds.yaml"
         ),
         summary=ws_path(
             "review/sex/sex_qc.summary.tsv"
@@ -130,8 +141,11 @@ rule sex_qc_review:
     conda:
         "../envs/r_environment.yaml"
     params:
-        threshold=lambda wc: cfg(
-            "thresholds/sex_f_threshold"
+        female_max=lambda wc: cfg(
+            "thresholds/female_max_f"
+        ),
+        male_min=lambda wc: cfg(
+            "thresholds/male_min_f"
         ),
     shell:
         r"""
@@ -142,24 +156,13 @@ rule sex_qc_review:
         Rscript workflow/scripts/sex_qc_review.R \
             --sexcheck "{input.sexcheck}" \
             --fam "{input.fam}" \
-            --threshold "{params.threshold}" \
+            --female-max-f "{params.female_max}" \
+            --male-min-f "{params.male_min}" \
             --plot "{output.plot}" \
             --table "{output.table}" \
-            --candidate-threshold \
-                "{output.candidate_threshold}" \
+            --candidate-thresholds \
+                "{output.candidate_thresholds}" \
             --summary "{output.summary}"
-
-        echo
-        echo "Sex-QC review completed."
-        echo "Inspect:"
-        echo "  {output.plot}"
-        echo "  {output.table}"
-        echo "  {output.summary}"
-        echo
-        echo "If the threshold is acceptable, copy:"
-        echo "  {output.candidate_threshold}"
-        echo "to:"
-        echo "  config/accepted_sex_threshold.yaml"
         """
 
 rule apply_approved_sex_threshold:
