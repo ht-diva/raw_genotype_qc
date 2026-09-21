@@ -165,10 +165,10 @@ rule sex_qc_review:
             --summary "{output.summary}"
         """
 
-rule apply_approved_sex_threshold:
+rule apply_approved_sex_thresholds:
     input:
         sexcheck=(
-            rules.check_sex_candidate_threshold.output.sexcheck
+            rules.check_sex_candidate_thresholds.output.sexcheck
         ),
         fam=rules.create_x_qc_markers.output.fam,
         threshold=lambda wc: cfg(
