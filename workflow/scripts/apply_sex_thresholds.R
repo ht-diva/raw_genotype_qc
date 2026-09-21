@@ -548,7 +548,6 @@ summary_table <- data.frame(
     sum(
       classification$STATUS ==
         "AMBIGUOUS_GENETIC_SEX"
-    ),
     sum(
       classification$STATUS ==
         "MISSING_GENETIC_SEX"

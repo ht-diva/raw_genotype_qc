@@ -194,7 +194,7 @@ rule apply_approved_sex_thresholds:
         Rscript workflow/scripts/apply_sex_thresholds.R \
             --sexcheck "{input.sexcheck}" \
             --fam "{input.fam}" \
-            --threshold-file "{input.threshold}" \
+            --thresholds "{input.threshold}" \
             --exclusions "{output.exclusions}" \
             --classification "{output.classification}" \
             --summary "{output.summary}"
