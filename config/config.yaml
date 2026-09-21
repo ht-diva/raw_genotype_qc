@@ -33,9 +33,10 @@ thresholds:
   maf: 0.01
   hwe: 1.0e-15
   heterozygosity_sd: 3.0
-  female_f_min: 0.5
-  female_f_max: 0.6
+  sex_f_threshold: 0.5
   king_cutoff: 0.0442
+
+accepted_sex_thresholds: "config/accepted_sex_thresholds.yaml"
 
 ld_pruning:
   window_kb: 50

@@ -5,40 +5,65 @@ suppressPackageStartupMessages({
   library(data.table)
 })
 
+# Command-line options ----------------------------------------------------------
+
 option_list <- list(
-  make_option("--sexcheck", type = "character",
-              help = "PLINK sex-check results"),
-  make_option("--fam", type = "character",
-              help = "PLINK FAM file"),
-  make_option("--thresholds", type = "character",
-              help = "Accepted threshold file"),
-  make_option("--exclude-ambiguous", type = "character", default = "true",
-              help = "Exclude ambiguous genetic-sex calls [default: %default]"),
-  make_option("--exclusions", type = "character",
-              help = "Output FID/IID exclusion list"),
-  make_option("--classification", type = "character",
-              help = "Output sample-level classification table"),
-  make_option("--summary", type = "character",
-              help = "Output summary table")
+  make_option(
+    "--sexcheck",
+    type = "character",
+    help = "PLINK sex-check results"
+  ),
+  make_option(
+    "--fam",
+    type = "character",
+    help = "PLINK FAM file"
+  ),
+  make_option(
+    "--threshold-file",
+    type = "character",
+    help = "YAML file containing the accepted sex_f_threshold"
+  ),
+  make_option(
+    "--exclusions",
+    type = "character",
+    help = "Output PLINK-compatible FID/IID exclusion list"
+  ),
+  make_option(
+    "--classification",
+    type = "character",
+    help = "Output sample-level classification table"
+  ),
+  make_option(
+    "--summary",
+    type = "character",
+    help = "Output summary table"
+  )
 )
 
-args <- parse_args(OptionParser(option_list = option_list))
+args <- parse_args(
+  OptionParser(option_list = option_list)
+)
 
 # Validate command-line arguments ----------------------------------------------
 
 required_args <- c(
   "sexcheck",
   "fam",
-  "thresholds",
+  "threshold-file",
   "exclusions",
   "classification",
   "summary"
 )
 
 missing_args <- required_args[
-  vapply(required_args, function(x) {
-    is.null(args[[x]]) || !nzchar(args[[x]])
-  }, logical(1))
+  vapply(
+    required_args,
+    function(argument) {
+      is.null(args[[argument]]) ||
+        !nzchar(args[[argument]])
+    },
+    logical(1)
+  )
 ]
 
 if (length(missing_args)) {
@@ -49,103 +74,88 @@ if (length(missing_args)) {
   )
 }
 
-parse_boolean <- function(value, option_name) {
-  normalized <- tolower(trimws(value))
+# Read the manually accepted threshold -----------------------------------------
 
-  if (normalized %in% c("true", "t", "1", "yes", "y")) {
-    return(TRUE)
+parse_threshold <- function(path) {
+  if (!file.exists(path)) {
+    stop(
+      "Accepted threshold file does not exist: ",
+      path,
+      call. = FALSE
+    )
   }
 
-  if (normalized %in% c("false", "f", "0", "no", "n")) {
-    return(FALSE)
+  lines <- readLines(
+    path,
+    warn = FALSE
+  )
+
+  # Remove comments and empty lines.
+  lines <- sub("#.*$", "", lines)
+  lines <- trimws(lines)
+  lines <- lines[nzchar(lines)]
+
+  threshold_line <- lines[
+    grepl(
+      "^sex_f_threshold[[:space:]]*:",
+      lines
+    )
+  ]
+
+  if (length(threshold_line) != 1L) {
+    stop(
+      paste(
+        "Accepted threshold file must contain exactly one",
+        "'sex_f_threshold:' entry."
+      ),
+      call. = FALSE
+    )
   }
 
+  threshold <- suppressWarnings(
+    as.numeric(
+      trimws(
+        sub(
+          "^[^:]+:",
+          "",
+          threshold_line
+        )
+      )
+    )
+  )
+
+  if (!is.finite(threshold)) {
+    stop(
+      "sex_f_threshold must be a finite number.",
+      call. = FALSE
+    )
+  }
+
+  threshold
+}
+
+threshold <- parse_threshold(
+  args[["threshold-file"]]
+)
+
+# Read PLINK sex-check results --------------------------------------------------
+
+sexcheck <- fread(
+  args$sexcheck,
+  data.table = FALSE
+)
+
+if (!"IID" %in% names(sexcheck)) {
   stop(
-    option_name,
-    " must be true/false, yes/no, or 1/0; received: ",
-    value,
+    "Sex-check file is missing the IID column.",
     call. = FALSE
   )
 }
 
-exclude_ambiguous <- parse_boolean(
-  args[["exclude-ambiguous"]],
-  "--exclude-ambiguous"
+f_column <- intersect(
+  c("F", "XF", "X_F"),
+  names(sexcheck)
 )
-
-# Read and validate accepted thresholds ----------------------------------------
-
-parse_thresholds <- function(path) {
-  if (!file.exists(path)) {
-    stop("Threshold file does not exist: ", path, call. = FALSE)
-  }
-
-  lines <- readLines(path, warn = FALSE)
-  lines <- sub("#.*$", "", lines)
-  lines <- trimws(lines)
-  lines <- lines[nzchar(lines) & grepl(":", lines, fixed = TRUE)]
-
-  keys <- trimws(sub(":.*$", "", lines))
-  values <- trimws(sub("^[^:]*:", "", lines))
-
-  if (anyDuplicated(keys)) {
-    duplicated_keys <- unique(keys[duplicated(keys)])
-    stop(
-      "Threshold file contains duplicate key(s): ",
-      paste(duplicated_keys, collapse = ", "),
-      call. = FALSE
-    )
-  }
-
-  thresholds <- setNames(
-    suppressWarnings(as.numeric(values)),
-    keys
-  )
-
-  required_keys <- c("female_max_f", "male_min_f")
-  missing_keys <- setdiff(required_keys, names(thresholds))
-
-  if (length(missing_keys)) {
-    stop(
-      "Threshold file must define: ",
-      paste(missing_keys, collapse = ", "),
-      call. = FALSE
-    )
-  }
-
-  female_max_f <- unname(thresholds["female_max_f"])
-  male_min_f <- unname(thresholds["male_min_f"])
-
-  if (!is.finite(female_max_f) || !is.finite(male_min_f)) {
-    stop("Sex-classification thresholds must be finite numbers.", call. = FALSE)
-  }
-
-  if (female_max_f >= male_min_f) {
-    stop(
-      "female_max_f must be lower than male_min_f.",
-      call. = FALSE
-    )
-  }
-
-  c(
-    female_max_f = female_max_f,
-    male_min_f = male_min_f
-  )
-}
-
-thresholds <- parse_thresholds(args$thresholds)
-female_max_f <- unname(thresholds["female_max_f"])
-male_min_f <- unname(thresholds["male_min_f"])
-
-# Read sex-check results --------------------------------------------------------
-
-sexcheck <- fread(args$sexcheck, data.table = FALSE)
-
-if (!"IID" %in% names(sexcheck)) {
-  stop("Sex-check file is missing the IID column.", call. = FALSE)
-}
-
-f_column <- intersect(c("F", "XF", "X_F"), names(sexcheck))
 
 if (!length(f_column)) {
   stop(
@@ -168,7 +178,10 @@ sexcheck <- sexcheck[
 ]
 
 names(sexcheck)[ncol(sexcheck)] <- "F"
-sexcheck$F <- suppressWarnings(as.numeric(sexcheck$F))
+
+sexcheck$F <- suppressWarnings(
+  as.numeric(sexcheck$F)
+)
 
 if (anyDuplicated(sexcheck[sexcheck_id_columns])) {
   stop(
@@ -177,7 +190,7 @@ if (anyDuplicated(sexcheck[sexcheck_id_columns])) {
   )
 }
 
-# Read the FAM file -------------------------------------------------------------
+# Read FAM file -----------------------------------------------------------------
 
 fam <- fread(
   args$fam,
@@ -194,13 +207,24 @@ if (ncol(fam) < 6L) {
 }
 
 fam <- fam[, seq_len(6), drop = FALSE]
-names(fam) <- c("FID", "IID", "PAT", "MAT", "SEX", "PHENO")
+
+names(fam) <- c(
+  "FID",
+  "IID",
+  "PAT",
+  "MAT",
+  "SEX",
+  "PHENO"
+)
 
 if (anyDuplicated(fam[c("FID", "IID")])) {
-  stop("FAM file contains duplicate FID/IID pairs.", call. = FALSE)
+  stop(
+    "FAM file contains duplicate FID/IID pairs.",
+    call. = FALSE
+  )
 }
 
-# Join records while preserving FAM order --------------------------------------
+# Join FAM and sex-check records ------------------------------------------------
 
 fam$.FAM_ORDER <- seq_len(nrow(fam))
 
@@ -228,12 +252,21 @@ classification$.FAM_ORDER <- NULL
 
 if (nrow(classification) != nrow(fam)) {
   stop(
-    "Internal join error: classification row count differs from FAM row count.",
+    paste(
+      "Internal join error:",
+      "the classification table and FAM file",
+      "contain different numbers of samples."
+    ),
     call. = FALSE
   )
 }
 
-# Classify reported and genetic sex --------------------------------------------
+# Standardize reported sex ------------------------------------------------------
+
+# PLINK sex codes:
+#   1 = male
+#   2 = female
+#   0 = unknown
 
 classification$REPORTED_SEX <- suppressWarnings(
   as.integer(classification$SEX)
@@ -244,58 +277,125 @@ classification$REPORTED_SEX[
     !classification$REPORTED_SEX %in% c(1L, 2L)
 ] <- 0L
 
+# Classify genetic sex ----------------------------------------------------------
+
+# Classification rule:
+#   F <= threshold = female
+#   F > threshold  = male
+#   missing F      = unknown
+
 classification$GENETIC_SEX <- 0L
 
 classification$GENETIC_SEX[
   is.finite(classification$F) &
-    classification$F <= female_max_f
+    classification$F <= threshold
 ] <- 2L
 
 classification$GENETIC_SEX[
   is.finite(classification$F) &
-    classification$F >= male_min_f
+    classification$F > threshold
 ] <- 1L
 
-has_reported_sex <- classification$REPORTED_SEX %in% c(1L, 2L)
-has_genetic_sex <- classification$GENETIC_SEX %in% c(1L, 2L)
+# Add readable labels -----------------------------------------------------------
+
+sex_labels <- c(
+  `0` = "unknown",
+  `1` = "male",
+  `2` = "female"
+)
+
+classification$REPORTED_SEX_LABEL <- unname(
+  sex_labels[
+    as.character(classification$REPORTED_SEX)
+  ]
+)
+
+classification$GENETIC_SEX_LABEL <- unname(
+  sex_labels[
+    as.character(classification$GENETIC_SEX)
+  ]
+)
+
+# Compare reported and genetic sex ---------------------------------------------
+
+has_reported_sex <-
+  classification$REPORTED_SEX %in% c(1L, 2L)
+
+has_genetic_sex <-
+  classification$GENETIC_SEX %in% c(1L, 2L)
+
 has_f_value <- is.finite(classification$F)
+
+classification$REPORTED_GENETIC_SEX_MATCH <-
+  has_reported_sex &
+  has_genetic_sex &
+  classification$REPORTED_SEX ==
+    classification$GENETIC_SEX
+
+# Assign sample status ----------------------------------------------------------
 
 classification$STATUS <- "OK"
 
-classification$STATUS[!has_f_value] <- "MISSING_GENETIC_SEX"
-
 classification$STATUS[
-  has_reported_sex &
-    has_f_value &
-    !has_genetic_sex
-] <- "AMBIGUOUS_GENETIC_SEX"
+  !has_f_value
+] <- "MISSING_GENETIC_SEX"
 
 classification$STATUS[
   has_reported_sex &
     has_genetic_sex &
-    classification$REPORTED_SEX != classification$GENETIC_SEX
+    classification$REPORTED_SEX !=
+      classification$GENETIC_SEX
 ] <- "DISCORDANT"
 
-# Give unknown reported sex precedence over genetic-sex classifications.
+# Unknown reported sex takes precedence.
 classification$STATUS[
   classification$REPORTED_SEX == 0L
 ] <- "REPORTED_SEX_UNKNOWN"
 
+# With one threshold there is no ambiguous interval.
+# Only discordant samples are excluded.
 classification$EXCLUDE <-
-  classification$STATUS == "DISCORDANT" |
-  (
-    exclude_ambiguous &
-      classification$STATUS == "AMBIGUOUS_GENETIC_SEX"
+  classification$STATUS == "DISCORDANT"
+
+# Create output directories -----------------------------------------------------
+
+output_paths <- c(
+  args$exclusions,
+  args$classification,
+  args$summary
+)
+
+invisible(
+  lapply(
+    unique(dirname(output_paths)),
+    dir.create,
+    recursive = TRUE,
+    showWarnings = FALSE
   )
+)
 
 # Write sample-level classification --------------------------------------------
 
+output_columns <- c(
+  "FID",
+  "IID",
+  "F",
+  "REPORTED_SEX",
+  "REPORTED_SEX_LABEL",
+  "GENETIC_SEX",
+  "GENETIC_SEX_LABEL",
+  "REPORTED_GENETIC_SEX_MATCH",
+  "STATUS",
+  "EXCLUDE"
+)
+
 write.table(
-  classification,
+  classification[, output_columns, drop = FALSE],
   file = args$classification,
   sep = "\t",
   row.names = FALSE,
-  quote = FALSE
+  quote = FALSE,
+  na = "NA"
 )
 
 # Write PLINK-compatible exclusion list ----------------------------------------
@@ -316,31 +416,37 @@ write.table(
   quote = FALSE
 )
 
-# Write summary ----------------------------------------------------------------
+# Write summary -----------------------------------------------------------------
 
 summary_table <- data.frame(
   metric = c(
-    "female_max_f",
-    "male_min_f",
-    "exclude_ambiguous",
+    "sex_f_threshold",
     "n_samples",
     "n_samples_with_f",
-    "n_missing_genetic_sex",
+    "n_genetic_female",
+    "n_genetic_male",
+    "n_reported_genetic_match",
     "n_discordant",
-    "n_ambiguous",
-    "n_reported_unknown",
+    "n_missing_genetic_sex",
+    "n_reported_sex_unknown",
     "n_excluded"
   ),
   value = c(
-    female_max_f,
-    male_min_f,
-    exclude_ambiguous,
+    threshold,
     nrow(classification),
-    sum(is.finite(classification$F)),
-    sum(classification$STATUS == "MISSING_GENETIC_SEX"),
+    sum(has_f_value),
+    sum(classification$GENETIC_SEX == 2L),
+    sum(classification$GENETIC_SEX == 1L),
+    sum(classification$REPORTED_GENETIC_SEX_MATCH),
     sum(classification$STATUS == "DISCORDANT"),
-    sum(classification$STATUS == "AMBIGUOUS_GENETIC_SEX"),
-    sum(classification$STATUS == "REPORTED_SEX_UNKNOWN"),
+    sum(
+      classification$STATUS ==
+        "MISSING_GENETIC_SEX"
+    ),
+    sum(
+      classification$STATUS ==
+        "REPORTED_SEX_UNKNOWN"
+    ),
     sum(classification$EXCLUDE)
   ),
   stringsAsFactors = FALSE

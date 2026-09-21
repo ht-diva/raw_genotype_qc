@@ -1,8 +1,38 @@
+from pathlib import Path
+
+
 configfile: "config/config.yaml"
 
 
 # Load shared helper functions.
 include: "workflow/rules/common.smk"
+
+
+# Sex-QC manual approval --------------------------------------------------------
+
+SEX_APPROVAL_FILE = cfg(
+    "accepted_sex_threshold",
+    "config/accepted_sex_threshold.yaml",
+)
+
+SEX_REVIEW_OUTPUTS = [
+    ws_path("review/sex/sex_F_distribution.pdf"),
+    ws_path("review/sex/sex_candidate_classification.tsv"),
+    ws_path("review/sex/candidate_sex_threshold.yaml"),
+    ws_path("review/sex/sex_qc.summary.tsv"),
+]
+
+SEX_FINAL_OUTPUTS = [
+    ws_path("sex_qc/automatic_sex_exclusions.tsv"),
+    ws_path("sex_qc/sex_classification.tsv"),
+    ws_path("sex_qc/accepted_sex_qc.summary.tsv"),
+]
+
+SEX_QC_OUTPUTS = (
+    SEX_FINAL_OUTPUTS
+    if Path(SEX_APPROVAL_FILE).is_file()
+    else SEX_REVIEW_OUTPUTS
+)
 
 
 rule all:
@@ -99,14 +129,8 @@ rule all:
             ws_path("sex_qc/sex_candidate.sexcheck"),
             ws_path("sex_qc/sex_candidate.log"),
 
-            # Sex QC manual review
-            ws_path("review/sex/sex_F_distribution.pdf"),
-            ws_path("review/sex/sex_candidate_classification.tsv"),
-            ws_path("review/sex/suggested_sex_thresholds.yaml"),
-            ws_path("review/sex/sex_qc.summary.tsv"),
-            ws_path("review/sex/REVIEW_REQUIRED.done"),
-
-
+            # Sex-QC review or final outputs
+            *SEX_QC_OUTPUTS,
         ]
 
 

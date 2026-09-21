@@ -73,8 +73,7 @@ rule create_x_qc_markers:
             --memory 11000
         """
 
-
-rule check_sex_candidate_thresholds:
+rule check_sex_candidate_threshold:
     input:
         bed=rules.create_x_qc_markers.output.bed,
         bim=rules.create_x_qc_markers.output.bim,
@@ -92,8 +91,9 @@ rule check_sex_candidate_thresholds:
     params:
         bfile=ws_path("sex_qc/x_qc/genotype"),
         prefix=ws_path("sex_qc/sex_candidate"),
-        female_max=lambda wc: cfg("thresholds/female_f_min"),
-        male_min=lambda wc: cfg("thresholds/female_f_max"),
+        threshold=lambda wc: cfg(
+            "thresholds/sex_f_threshold"
+        ),
     shell:
         r"""
         set -euo pipefail
@@ -101,35 +101,37 @@ rule check_sex_candidate_thresholds:
         plink2 \
             --bfile "{params.bfile}" \
             --check-sex \
-                max-female-xf="{params.female_max}" \
-                min-male-xf="{params.male_min}" \
+                max-female-xf="{params.threshold}" \
+                min-male-xf="{params.threshold}" \
             --out "{params.prefix}" \
             --threads {threads} \
             --memory 7500
         """
 
-
 rule sex_qc_review:
     input:
-        sexcheck=rules.check_sex_candidate_thresholds.output.sexcheck,
+        sexcheck=(
+            rules.check_sex_candidate_threshold.output.sexcheck
+        ),
         fam=rules.create_x_qc_markers.output.fam,
     output:
-        plot=ws_path("review/sex/sex_F_distribution.pdf"),
+        plot=ws_path(
+            "review/sex/sex_F_distribution.pdf"
+        ),
         table=ws_path(
             "review/sex/sex_candidate_classification.tsv"
         ),
-        suggested_thresholds=ws_path(
-            "review/sex/suggested_sex_thresholds.yaml"
+        candidate_threshold=ws_path(
+            "review/sex/candidate_sex_threshold.yaml"
         ),
-        summary=ws_path("review/sex/sex_qc.summary.tsv"),
+        summary=ws_path(
+            "review/sex/sex_qc.summary.tsv"
+        ),
     conda:
         "../envs/r_environment.yaml"
     params:
-        female_max=lambda wc: cfg("thresholds/female_f_min"),
-        male_min=lambda wc: cfg("thresholds/female_f_max"),
-        quantile=lambda wc: cfg(
-            "thresholds/sex_empirical_tail_quantile",
-            0.005,
+        threshold=lambda wc: cfg(
+            "thresholds/sex_f_threshold"
         ),
     shell:
         r"""
@@ -140,64 +142,48 @@ rule sex_qc_review:
         Rscript workflow/scripts/sex_qc_review.R \
             --sexcheck "{input.sexcheck}" \
             --fam "{input.fam}" \
-            --candidate-female-max-f "{params.female_max}" \
-            --candidate-male-min-f "{params.male_min}" \
-            --tail-quantile "{params.quantile}" \
+            --threshold "{params.threshold}" \
             --plot "{output.plot}" \
             --table "{output.table}" \
-            --suggested-thresholds \
-                "{output.suggested_thresholds}" \
+            --candidate-threshold \
+                "{output.candidate_threshold}" \
             --summary "{output.summary}"
+
+        echo
+        echo "Sex-QC review completed."
+        echo "Inspect:"
+        echo "  {output.plot}"
+        echo "  {output.table}"
+        echo "  {output.summary}"
+        echo
+        echo "If the threshold is acceptable, copy:"
+        echo "  {output.candidate_threshold}"
+        echo "to:"
+        echo "  config/accepted_sex_threshold.yaml"
         """
 
-
-rule sex_review_bundle:
-    input:
-        plot=rules.sex_qc_review.output.plot,
-        table=rules.sex_qc_review.output.table,
-        suggested_thresholds=(
-            rules.sex_qc_review.output.suggested_thresholds
-        ),
-        summary=rules.sex_qc_review.output.summary,
-    output:
-        done=touch(
-            ws_path("review/sex/REVIEW_REQUIRED.done")
-        ),
-    shell:
-        r"""
-        echo \
-            "GATE: inspect the review/sex outputs and create the configured accepted-thresholds YAML file. Do not manually transcribe sample IDs." \
-            >&2
-        """
-
-
-rule apply_accepted_sex_thresholds:
+rule apply_approved_sex_threshold:
     input:
         sexcheck=(
-            rules.check_sex_candidate_thresholds.output.sexcheck
+            rules.check_sex_candidate_threshold.output.sexcheck
         ),
         fam=rules.create_x_qc_markers.output.fam,
-        review=rules.sex_review_bundle.output.done,
-        thresholds=lambda wc: cfg(
-            "accepted_sex_thresholds",
-            "config/accepted_sex_thresholds.yaml",
+        threshold=lambda wc: cfg(
+            "accepted_sex_threshold",
+            "config/accepted_sex_threshold.yaml",
         ),
     output:
         exclusions=ws_path(
             "sex_qc/automatic_sex_exclusions.tsv"
         ),
         classification=ws_path(
-            "sex_qc/sex_classification_accepted_thresholds.tsv"
+            "sex_qc/sex_classification.tsv"
         ),
         summary=ws_path(
             "sex_qc/accepted_sex_qc.summary.tsv"
         ),
     conda:
         "../envs/r_environment.yaml"
-    params:
-        exclude_ambiguous=lambda wc: str(
-            cfg("exclude_ambiguous_sex", True)
-        ).lower(),
     shell:
         r"""
         set -euo pipefail
@@ -205,8 +191,7 @@ rule apply_accepted_sex_thresholds:
         Rscript workflow/scripts/apply_sex_thresholds.R \
             --sexcheck "{input.sexcheck}" \
             --fam "{input.fam}" \
-            --thresholds "{input.thresholds}" \
-            --exclude-ambiguous "{params.exclude_ambiguous}" \
+            --threshold-file "{input.threshold}" \
             --exclusions "{output.exclusions}" \
             --classification "{output.classification}" \
             --summary "{output.summary}"
