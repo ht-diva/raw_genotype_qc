@@ -125,6 +125,7 @@ rule sex_qc_review:
             rules.check_sex_candidate_thresholds.output.sexcheck
         ),
         fam=rules.create_x_qc_markers.output.fam,
+        unmatched_genotypes=rules.prepare_reported_sex.output.unmatched_genotypes,
     output:
         plot=ws_path(
             "review/sex/sex_F_distribution.pdf"
@@ -156,6 +157,7 @@ rule sex_qc_review:
         Rscript workflow/scripts/sex_qc_review.R \
             --sexcheck "{input.sexcheck}" \
             --fam "{input.fam}" \
+            --unmatched-genotypes "{input.unmatched_genotypes}" \
             --female-max-f "{params.female_max}" \
             --male-min-f "{params.male_min}" \
             --plot "{output.plot}" \
@@ -171,6 +173,7 @@ rule apply_approved_sex_thresholds:
             rules.check_sex_candidate_thresholds.output.sexcheck
         ),
         fam=rules.create_x_qc_markers.output.fam,
+        unmatched_genotypes=rules.prepare_reported_sex.output.unmatched_genotypes,
         threshold=lambda wc: cfg(
             "accepted_sex_thresholds",
             "config/accepted_sex_thresholds.yaml",
@@ -194,6 +197,7 @@ rule apply_approved_sex_thresholds:
         Rscript workflow/scripts/apply_sex_thresholds.R \
             --sexcheck "{input.sexcheck}" \
             --fam "{input.fam}" \
+            --unmatched-genotypes "{input.unmatched_genotypes}" \
             --thresholds "{input.threshold}" \
             --exclusions "{output.exclusions}" \
             --classification "{output.classification}" \

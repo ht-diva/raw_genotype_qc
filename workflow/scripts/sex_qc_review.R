@@ -19,6 +19,11 @@ option_list <- list(
     help = "PLINK FAM file"
   ),
   make_option(
+    "--unmatched-genotypes",
+    type = "character",
+    help = "Genotype samples not matched to phenotype metadata"
+  ),
+  make_option(
     "--female-max-f",
     type = "double",
     help = "Maximum chrX F for genetic females"
@@ -59,6 +64,7 @@ args <- parse_args(
 required_args <- c(
   "sexcheck",
   "fam",
+  "unmatched-genotypes",
   "female-max-f",
   "male-min-f",
   "plot",
@@ -71,7 +77,8 @@ missing_args <- required_args[
   vapply(
     required_args,
     function(argument) {
-      is.null(args[[argument]])
+      is.null(args[[argument]]) ||
+        length(args[[argument]]) == 0L
     },
     logical(1)
   )
@@ -90,7 +97,7 @@ male_min_f <- args[["male-min-f"]]
 
 if (
   !is.finite(female_max_f) ||
-  !is.finite(male_min_f)
+    !is.finite(male_min_f)
 ) {
   stop(
     "Sex-QC thresholds must be finite numbers.",
@@ -209,6 +216,40 @@ if (anyDuplicated(fam[c("FID", "IID")])) {
   )
 }
 
+# Read genotype samples not matched to phenotype metadata ----------------------
+
+unmatched_genotypes <- fread(
+  args[["unmatched-genotypes"]],
+  data.table = FALSE,
+  colClasses = "character"
+)
+
+if (
+  !all(c("FID", "IID") %in% names(unmatched_genotypes))
+) {
+  stop(
+    paste(
+      "The unmatched-genotype file must contain",
+      "FID and IID columns."
+    ),
+    call. = FALSE
+  )
+}
+
+if (
+  anyDuplicated(
+    unmatched_genotypes[c("FID", "IID")]
+  )
+) {
+  stop(
+    paste(
+      "The unmatched-genotype file contains",
+      "duplicate FID/IID pairs."
+    ),
+    call. = FALSE
+  )
+}
+
 # Join FAM and sex-check results ------------------------------------------------
 
 fam$.FAM_ORDER <- seq_len(nrow(fam))
@@ -248,7 +289,7 @@ if (nrow(samples) != nrow(fam)) {
 
 # Standardize reported sex ------------------------------------------------------
 
-# PLINK codes:
+# PLINK sex codes:
 #   1 = male
 #   2 = female
 #   0 = unknown
@@ -261,6 +302,35 @@ samples$REPORTED_SEX[
   is.na(samples$REPORTED_SEX) |
     !samples$REPORTED_SEX %in% c(1L, 2L)
 ] <- 0L
+
+# Determine phenotype-metadata matching status ---------------------------------
+
+sample_key <- paste(
+  samples$FID,
+  samples$IID,
+  sep = "\r"
+)
+
+unmatched_key <- paste(
+  unmatched_genotypes$FID,
+  unmatched_genotypes$IID,
+  sep = "\r"
+)
+
+samples$METADATA_MATCHED <-
+  !sample_key %in% unmatched_key
+
+samples$REPORTED_SEX_STATUS <- "AVAILABLE"
+
+samples$REPORTED_SEX_STATUS[
+  samples$REPORTED_SEX == 0L &
+    !samples$METADATA_MATCHED
+] <- "GENOTYPE_NOT_MATCHED_TO_PHENOTYPE"
+
+samples$REPORTED_SEX_STATUS[
+  samples$REPORTED_SEX == 0L &
+    samples$METADATA_MATCHED
+] <- "MISSING_OR_UNRECOGNISED_PHENOTYPE_SEX"
 
 # Classify genetic sex ----------------------------------------------------------
 
@@ -312,10 +382,10 @@ has_genetic_sex <-
 
 samples$REPORTED_GENETIC_SEX_MATCH <-
   has_reported_sex &
-  has_genetic_sex &
-  samples$REPORTED_SEX == samples$GENETIC_SEX
+    has_genetic_sex &
+    samples$REPORTED_SEX == samples$GENETIC_SEX
 
-# Assign status -----------------------------------------------------------------
+# Assign QC status --------------------------------------------------------------
 
 samples$STATUS <- "OK"
 
@@ -334,19 +404,50 @@ samples$STATUS[
     samples$REPORTED_SEX != samples$GENETIC_SEX
 ] <- "DISCORDANT"
 
-# Unknown reported sex takes precedence.
+# Unknown reported sex takes precedence because a comparison is impossible.
 samples$STATUS[
   samples$REPORTED_SEX == 0L
 ] <- "REPORTED_SEX_UNKNOWN"
 
 # Candidate exclusions:
-#   - reported/genetic sex discordance
-#   - F inside the ambiguous interval
+#   - discordant reported and genetic sex
+#   - ambiguous genetic sex
 samples$EXCLUDE <-
   samples$STATUS %in% c(
     "DISCORDANT",
     "AMBIGUOUS_GENETIC_SEX"
   )
+
+# Validate reported-sex counts --------------------------------------------------
+
+n_genotype_not_matched <- sum(
+  samples$REPORTED_SEX_STATUS ==
+    "GENOTYPE_NOT_MATCHED_TO_PHENOTYPE"
+)
+
+n_missing_or_unrecognised_sex <- sum(
+  samples$REPORTED_SEX_STATUS ==
+    "MISSING_OR_UNRECOGNISED_PHENOTYPE_SEX"
+)
+
+n_reported_sex_unknown <- sum(
+  samples$REPORTED_SEX == 0L
+)
+
+if (
+  n_genotype_not_matched +
+    n_missing_or_unrecognised_sex !=
+    n_reported_sex_unknown
+) {
+  stop(
+    paste(
+      "Internal consistency error:",
+      "reported-sex unknown categories do not sum",
+      "to the total unknown count."
+    ),
+    call. = FALSE
+  )
+}
 
 # Write sample-level classification --------------------------------------------
 
@@ -354,8 +455,10 @@ output_columns <- c(
   "FID",
   "IID",
   "F",
+  "METADATA_MATCHED",
   "REPORTED_SEX",
   "REPORTED_SEX_LABEL",
+  "REPORTED_SEX_STATUS",
   "GENETIC_SEX",
   "GENETIC_SEX_LABEL",
   "REPORTED_GENETIC_SEX_MATCH",
@@ -450,7 +553,7 @@ if (length(finite_f)) {
     bty = "n"
   )
 
-  # Page 2: F distribution by reported sex.
+  # Page 2: F values grouped by reported sex.
   plot_groups <- list()
 
   if (length(reported_female_f)) {
@@ -515,6 +618,8 @@ summary_table <- data.frame(
     "n_discordant",
     "n_ambiguous",
     "n_missing_genetic_sex",
+    "n_genotype_not_matched_to_phenotype",
+    "n_missing_or_unrecognised_phenotype_sex",
     "n_reported_sex_unknown",
     "n_excluded"
   ),
@@ -527,18 +632,11 @@ summary_table <- data.frame(
     sum(samples$GENETIC_SEX == 1L),
     sum(samples$REPORTED_GENETIC_SEX_MATCH),
     sum(samples$STATUS == "DISCORDANT"),
-    sum(
-      samples$STATUS ==
-        "AMBIGUOUS_GENETIC_SEX"
-    ),
-    sum(
-      samples$STATUS ==
-        "MISSING_GENETIC_SEX"
-    ),
-    sum(
-      samples$STATUS ==
-        "REPORTED_SEX_UNKNOWN"
-    ),
+    sum(samples$STATUS == "AMBIGUOUS_GENETIC_SEX"),
+    sum(!has_f_value),
+    n_genotype_not_matched,
+    n_missing_or_unrecognised_sex,
+    n_reported_sex_unknown,
     sum(samples$EXCLUDE)
   ),
   stringsAsFactors = FALSE
