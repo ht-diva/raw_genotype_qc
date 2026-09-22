@@ -31,11 +31,12 @@ option_list <- list(
   make_option(
     "--exclude-ambiguous",
     type = "character",
-    default = "true",
-    help = paste(
-      "Exclude ambiguous genetic-sex calls",
-      "[default: %default]"
-    )
+    help = "Exclude ambiguous genetic-sex calls"
+  ),
+  make_option(
+    "--exclude-discordant",
+    type = "character",
+    help = "Exclude discordant reported/genetic-sex calls"
   ),
   make_option(
     "--exclusions",
@@ -65,6 +66,8 @@ required_args <- c(
   "fam",
   "unmatched-genotypes",
   "thresholds",
+  "exclude-ambiguous",
+  "exclude-discordant",
   "exclusions",
   "classification",
   "summary"
@@ -127,6 +130,11 @@ parse_boolean <- function(value, option_name) {
 exclude_ambiguous <- parse_boolean(
   args[["exclude-ambiguous"]],
   "--exclude-ambiguous"
+)
+
+exclude_discordant <- parse_boolean(
+  args[["exclude-discordant"]],
+  "--exclude-discordant"
 )
 
 # Read manually accepted thresholds --------------------------------------------
@@ -494,6 +502,7 @@ classification$REPORTED_GENETIC_SEX_MATCH <-
 # Assign QC status --------------------------------------------------------------
 
 classification$STATUS <- "OK"
+classification$REVIEW_FLAG <- ""
 
 classification$STATUS[
   !has_f_value
@@ -512,13 +521,29 @@ classification$STATUS[
 ] <- "DISCORDANT"
 
 classification$STATUS[
-  classification$REPORTED_SEX == 0L
-] <- "REPORTED_SEX_UNKNOWN"
+  has_genetic_sex &
+    classification$REPORTED_SEX_STATUS ==
+      "GENOTYPE_NOT_MATCHED_TO_PHENOTYPE"
+] <- "GENOTYPE_NOT_MATCHED_TO_PHENOTYPE"
+
+classification$REVIEW_FLAG[
+  classification$REPORTED_SEX_STATUS ==
+    "GENOTYPE_NOT_MATCHED_TO_PHENOTYPE"
+] <- "WARNING / investigate"
+
+classification$STATUS[
+  has_genetic_sex &
+    classification$REPORTED_SEX_STATUS ==
+      "MISSING_OR_UNRECOGNISED_PHENOTYPE_SEX"
+] <- "MISSING_OR_UNRECOGNISED_PHENOTYPE_SEX"
 
 # Determine exclusions ----------------------------------------------------------
 
 classification$EXCLUDE <-
-  classification$STATUS == "DISCORDANT" |
+  (
+    exclude_discordant &
+      classification$STATUS == "DISCORDANT"
+  ) |
     (
       exclude_ambiguous &
         classification$STATUS ==
@@ -587,6 +612,7 @@ output_columns <- c(
   "GENETIC_SEX_LABEL",
   "REPORTED_GENETIC_SEX_MATCH",
   "STATUS",
+  "REVIEW_FLAG",
   "EXCLUDE"
 )
 
@@ -624,6 +650,7 @@ summary_table <- data.frame(
     "female_max_f",
     "male_min_f",
     "exclude_ambiguous",
+    "exclude_discordant",
     "n_samples",
     "n_samples_with_f",
     "n_genetic_female",
@@ -641,6 +668,7 @@ summary_table <- data.frame(
     female_max_f,
     male_min_f,
     exclude_ambiguous,
+    exclude_discordant,
     nrow(classification),
     sum(has_f_value),
     sum(classification$GENETIC_SEX == 2L),
@@ -659,6 +687,12 @@ summary_table <- data.frame(
   ),
   stringsAsFactors = FALSE
 )
+
+summary_table$warning <- ""
+summary_table$warning[
+  summary_table$metric ==
+    "n_genotype_not_matched_to_phenotype"
+] <- "WARNING / investigate; not automatically excluded"
 
 write.table(
   summary_table,

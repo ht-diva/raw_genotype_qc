@@ -34,6 +34,16 @@ option_list <- list(
     help = "Minimum chrX F for genetic males"
   ),
   make_option(
+    "--exclude-ambiguous",
+    type = "character",
+    help = "Exclude ambiguous genetic-sex calls"
+  ),
+  make_option(
+    "--exclude-discordant",
+    type = "character",
+    help = "Exclude discordant reported/genetic-sex calls"
+  ),
+  make_option(
     "--plot",
     type = "character",
     help = "Output diagnostic PDF"
@@ -67,6 +77,8 @@ required_args <- c(
   "unmatched-genotypes",
   "female-max-f",
   "male-min-f",
+  "exclude-ambiguous",
+  "exclude-discordant",
   "plot",
   "table",
   "candidate-thresholds",
@@ -94,6 +106,21 @@ if (length(missing_args)) {
 
 female_max_f <- args[["female-max-f"]]
 male_min_f <- args[["male-min-f"]]
+
+parse_boolean <- function(value, option_name) {
+  normalized <- tolower(trimws(value))
+  if (normalized %in% c("true", "t", "1", "yes", "y")) return(TRUE)
+  if (normalized %in% c("false", "f", "0", "no", "n")) return(FALSE)
+  stop(option_name, " must be true/false, yes/no, or 1/0; received: ", value,
+       call. = FALSE)
+}
+
+exclude_ambiguous <- parse_boolean(
+  args[["exclude-ambiguous"]], "--exclude-ambiguous"
+)
+exclude_discordant <- parse_boolean(
+  args[["exclude-discordant"]], "--exclude-discordant"
+)
 
 if (
   !is.finite(female_max_f) ||
@@ -388,6 +415,7 @@ samples$REPORTED_GENETIC_SEX_MATCH <-
 # Assign QC status --------------------------------------------------------------
 
 samples$STATUS <- "OK"
+samples$REVIEW_FLAG <- ""
 
 samples$STATUS[
   !has_f_value
@@ -404,19 +432,29 @@ samples$STATUS[
     samples$REPORTED_SEX != samples$GENETIC_SEX
 ] <- "DISCORDANT"
 
-# Unknown reported sex takes precedence because a comparison is impossible.
 samples$STATUS[
-  samples$REPORTED_SEX == 0L
-] <- "REPORTED_SEX_UNKNOWN"
+  has_genetic_sex &
+    samples$REPORTED_SEX_STATUS ==
+      "GENOTYPE_NOT_MATCHED_TO_PHENOTYPE"
+] <- "GENOTYPE_NOT_MATCHED_TO_PHENOTYPE"
+
+samples$REVIEW_FLAG[
+  samples$REPORTED_SEX_STATUS ==
+    "GENOTYPE_NOT_MATCHED_TO_PHENOTYPE"
+] <- "WARNING / investigate"
+
+samples$STATUS[
+  has_genetic_sex &
+    samples$REPORTED_SEX_STATUS ==
+      "MISSING_OR_UNRECOGNISED_PHENOTYPE_SEX"
+] <- "MISSING_OR_UNRECOGNISED_PHENOTYPE_SEX"
 
 # Candidate exclusions:
 #   - discordant reported and genetic sex
 #   - ambiguous genetic sex
 samples$EXCLUDE <-
-  samples$STATUS %in% c(
-    "DISCORDANT",
-    "AMBIGUOUS_GENETIC_SEX"
-  )
+  (exclude_discordant & samples$STATUS == "DISCORDANT") |
+  (exclude_ambiguous & samples$STATUS == "AMBIGUOUS_GENETIC_SEX")
 
 # Validate reported-sex counts --------------------------------------------------
 
@@ -463,6 +501,7 @@ output_columns <- c(
   "GENETIC_SEX_LABEL",
   "REPORTED_GENETIC_SEX_MATCH",
   "STATUS",
+  "REVIEW_FLAG",
   "EXCLUDE"
 )
 
@@ -610,6 +649,8 @@ summary_table <- data.frame(
   metric = c(
     "female_max_f",
     "male_min_f",
+    "exclude_ambiguous",
+    "exclude_discordant",
     "n_samples",
     "n_samples_with_f",
     "n_genetic_female",
@@ -626,6 +667,8 @@ summary_table <- data.frame(
   value = c(
     female_max_f,
     male_min_f,
+    exclude_ambiguous,
+    exclude_discordant,
     nrow(samples),
     sum(has_f_value),
     sum(samples$GENETIC_SEX == 2L),
@@ -641,6 +684,12 @@ summary_table <- data.frame(
   ),
   stringsAsFactors = FALSE
 )
+
+summary_table$warning <- ""
+summary_table$warning[
+  summary_table$metric ==
+    "n_genotype_not_matched_to_phenotype"
+] <- "WARNING / investigate; not automatically excluded"
 
 write.table(
   summary_table,

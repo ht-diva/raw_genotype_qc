@@ -100,10 +100,10 @@ rule check_sex_candidate_thresholds:
             "sex_qc/sex_candidate"
         ),
         female_max=lambda wc: cfg(
-            "thresholds/female_max_f"
+            "sex_qc/female_max_f"
         ),
         male_min=lambda wc: cfg(
-            "thresholds/male_min_f"
+            "sex_qc/male_min_f"
         ),
     shell:
         r"""
@@ -143,10 +143,16 @@ rule sex_qc_review:
         "../envs/r_environment.yaml"
     params:
         female_max=lambda wc: cfg(
-            "thresholds/female_max_f"
+            "sex_qc/female_max_f"
         ),
         male_min=lambda wc: cfg(
-            "thresholds/male_min_f"
+            "sex_qc/male_min_f"
+        ),
+        exclude_ambiguous=lambda wc: cfg(
+            "sex_qc/exclude_ambiguous_sex"
+        ),
+        exclude_discordant=lambda wc: cfg(
+            "sex_qc/exclude_discordant_sex"
         ),
     shell:
         r"""
@@ -160,6 +166,8 @@ rule sex_qc_review:
             --unmatched-genotypes "{input.unmatched_genotypes}" \
             --female-max-f "{params.female_max}" \
             --male-min-f "{params.male_min}" \
+            --exclude-ambiguous "{params.exclude_ambiguous}" \
+            --exclude-discordant "{params.exclude_discordant}" \
             --plot "{output.plot}" \
             --table "{output.table}" \
             --candidate-thresholds \
@@ -190,6 +198,13 @@ rule apply_approved_sex_thresholds:
         ),
     conda:
         "../envs/r_environment.yaml"
+    params:
+        exclude_ambiguous=lambda wc: cfg(
+            "sex_qc/exclude_ambiguous_sex"
+        ),
+        exclude_discordant=lambda wc: cfg(
+            "sex_qc/exclude_discordant_sex"
+        ),
     shell:
         r"""
         set -euo pipefail
@@ -199,6 +214,8 @@ rule apply_approved_sex_thresholds:
             --fam "{input.fam}" \
             --unmatched-genotypes "{input.unmatched_genotypes}" \
             --thresholds "{input.threshold}" \
+            --exclude-ambiguous "{params.exclude_ambiguous}" \
+            --exclude-discordant "{params.exclude_discordant}" \
             --exclusions "{output.exclusions}" \
             --classification "{output.classification}" \
             --summary "{output.summary}"
