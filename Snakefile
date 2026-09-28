@@ -42,30 +42,24 @@ rule all:
             ws_path("standardization/input.ok"),
             ws_path("standardization/input.summary.tsv"),
 
+            # Select genotype samples before matching reported sex
+            ws_path("external_samples/eligible_samples.keep"),
+            ws_path("external_samples/external_sample_exclusions.tsv"),
+            ws_path("external_samples/external_samples.report.tsv"),
+            ws_path("external_samples/genotype.bed"),
+            ws_path("external_samples/genotype.bim"),
+            ws_path("external_samples/genotype.fam"),
+
             # Reported sex
             ws_path("standardization/reported_sex.update.tsv"),
-            ws_path("standardization/sample_metadata_report.tsv"),
-            ws_path("standardization/genotype_without_metadata.tsv"),
-            ws_path("standardization/metadata_without_genotype.tsv"),
+            ws_path("standardization/phenotype_matching_report.tsv"),
+            ws_path("standardization/genotype_without_phenotype.tsv"),
+            ws_path("standardization/phenotype_without_genotype.tsv"),
 
             # Standardized genotype dataset
             ws_path("standardization/genotype.bed"),
             ws_path("standardization/genotype.bim"),
             ws_path("standardization/genotype.fam"),
-
-            # External sample selection
-            ws_path("external_samples/eligible_samples.keep"),
-            ws_path(
-                "external_samples/external_sample_exclusions.tsv"
-            ),
-            ws_path(
-                "external_samples/external_samples.report.tsv"
-            ),
-
-            # Dataset after external sample selection
-            ws_path("external_samples/genotype.bed"),
-            ws_path("external_samples/genotype.bim"),
-            ws_path("external_samples/genotype.fam"),
 
             # Sample missingness
             ws_path(

@@ -37,6 +37,44 @@ def cfg(key_path, default=_MISSING):
     return value
 
 
+# Initial sample selection: keep IDs from proteomics or metabolomics -----------
+
+def selected_keep_ids_files():
+    enabled = cfg("keep_ids/enabled")
+
+    if not isinstance(enabled, bool):
+        raise WorkflowError("keep_ids/enabled must be true or false")
+    if not enabled:
+        return []
+
+    assay = cfg("keep_ids/type")
+    if assay not in ("proteomics", "metabolomics"):
+        raise WorkflowError(
+            "keep_ids/type must be 'proteomics' or 'metabolomics'"
+        )
+    path = cfg(f"keep_ids/{assay}")
+    if not isinstance(path, str) or not path.strip():
+        raise WorkflowError(
+            f"keep_ids/{assay} must contain an ID file path when enabled"
+        )
+    return [path]
+
+
+def external_remove_files():
+    """External exclusions apply independently of the omics keep switch."""
+    files = cfg("external_samples/remove_files", [])
+    if not isinstance(files, list):
+        raise WorkflowError("external_samples/remove_files must be a list")
+    path = cfg("external_samples_exclusions", None)
+    if path is not None:
+        if not isinstance(path, str) or not path.strip():
+            raise WorkflowError("external_samples_exclusions must be a path or null")
+        files = [path] + files
+    if any(not isinstance(p, str) or not p.strip() for p in files):
+        raise WorkflowError("External removal files must contain nonempty paths")
+    return list(dict.fromkeys(files))
+
+
 RESULTS_DIR = Path(cfg("output_dir", "results"))
 
 
