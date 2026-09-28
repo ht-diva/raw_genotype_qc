@@ -7,4 +7,3 @@ dependencies:
   - r-base=4.4
   - r-optparse
   - r-data.table
-  - r-haven

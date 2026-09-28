@@ -1,6 +1,9 @@
 rule build_external_sample_set:
     input:
-        fam=rules.standardize_genotype.output.fam,
+        fam=config["fam_path"],
+        validated=rules.inspect_bed_input.output.ok,
+        keep_id_files=selected_keep_ids_files(),
+        remove_id_files=external_remove_files(),
     output:
         keep=ws_path(
             "external_samples/eligible_samples.keep"
@@ -14,18 +17,9 @@ rule build_external_sample_set:
     conda:
         "../envs/r_environment.yaml"
     params:
-        keep_files=lambda wc: ";".join(
-            map(
-                str,
-                cfg("external_samples/keep_files", []),
-            )
-        ),
-        remove_files=lambda wc: ";".join(
-            map(
-                str,
-                cfg("external_samples/remove_files", []),
-            )
-        ),
+        keep_enabled=lambda wc: str(cfg("keep_ids/enabled")).lower(),
+        keep_files=lambda wc: ";".join(selected_keep_ids_files()),
+        remove_files=lambda wc: ";".join(external_remove_files()),
     shell:
         r"""
         set -euo pipefail
@@ -37,15 +31,16 @@ rule build_external_sample_set:
             --keep-output "{output.keep}" \
             --exclusions-output "{output.exclusions}" \
             --report "{output.report}" \
+            --keep-enabled "{params.keep_enabled}" \
             --keep-files "{params.keep_files}" \
             --remove-files "{params.remove_files}"
         """
 
 rule apply_external_sample_set:
     input:
-        bed=rules.standardize_genotype.output.bed,
-        bim=rules.standardize_genotype.output.bim,
-        fam=rules.standardize_genotype.output.fam,
+        bed=config["bed_path"],
+        bim=config["bim_path"],
+        fam=config["fam_path"],
         keep=rules.build_external_sample_set.output.keep,
     output:
         bed=ws_path(
@@ -68,7 +63,7 @@ rule apply_external_sample_set:
         runtime=90,
         mem_mb=12000,
     params:
-        source=ws_path("standardization/genotype"),
+        source=str(Path(config["bed_path"]).with_suffix("")),
         prefix=ws_path("external_samples/genotype"),
     shell:
         r"""
@@ -91,9 +86,9 @@ rule sample_missingness_report:
     input:
         # Standardized genotype dataset after applying external
         # sample inclusion/exclusion lists.
-        bed=rules.apply_external_sample_set.output.bed,
-        bim=rules.apply_external_sample_set.output.bim,
-        fam=rules.apply_external_sample_set.output.fam,
+        bed=rules.standardize_genotype.output.bed,
+        bim=rules.standardize_genotype.output.bim,
+        fam=rules.standardize_genotype.output.fam,
     output:
         # Per-sample genotype missingness statistics.
         smiss=ws_path(
@@ -113,9 +108,9 @@ rule sample_missingness_report:
         mem_mb=8000,
     params:
         # Prefix of the PLINK dataset produced by
-        # apply_external_sample_set.
+        # standardize_genotype.
         bfile=ws_path(
-            "external_samples/genotype"
+            "standardization/genotype"
         ),
 
         # Prefix used for the PLINK output files.
@@ -150,9 +145,7 @@ rule plot_sample_missingness:
     conda:
         "../envs/r_environment.yaml"
     params:
-        threshold=lambda wc: config.get(
-            "sample_qc", {}
-        ).get("mind", 0.1),
+        threshold=lambda wc: cfg("thresholds/sample_missingness"),
     shell:
         r"""
         Rscript workflow/scripts/plot_sample_missingness.R \
@@ -165,9 +158,9 @@ rule plot_sample_missingness:
 rule sample_missingness_keep:
     input:
         # Genotype dataset after applying external sample exclusions.
-        bed=rules.apply_external_sample_set.output.bed,
-        bim=rules.apply_external_sample_set.output.bim,
-        fam=rules.apply_external_sample_set.output.fam,
+        bed=rules.standardize_genotype.output.bed,
+        bim=rules.standardize_genotype.output.bim,
+        fam=rules.standardize_genotype.output.fam,
 
         # Ensures that the missingness report and plot have been reviewed
         # before applying the sample missingness filter.
@@ -193,7 +186,7 @@ rule sample_missingness_keep:
         # Prefix of the PLINK dataset generated after external
         # sample selection.
         bfile=ws_path(
-            "external_samples/genotype"
+            "standardization/genotype"
         ),
 
         # Prefix used for the PLINK missingness-filter output.
@@ -232,9 +225,9 @@ rule sample_missingness_keep:
 rule apply_sample_missingness:
     input:
         # PLINK dataset after applying external sample exclusions.
-        bed=rules.apply_external_sample_set.output.bed,
-        bim=rules.apply_external_sample_set.output.bim,
-        fam=rules.apply_external_sample_set.output.fam,
+        bed=rules.standardize_genotype.output.bed,
+        bim=rules.standardize_genotype.output.bim,
+        fam=rules.standardize_genotype.output.fam,
 
         # Samples passing the configured missingness threshold.
         keep=rules.sample_missingness_keep.output.keep,
@@ -264,7 +257,7 @@ rule apply_sample_missingness:
     params:
         # Prefix of the dataset before sample missingness filtering.
         bfile=ws_path(
-            "external_samples/genotype"
+            "standardization/genotype"
         ),
 
         # Prefix of the filtered output dataset.
@@ -285,8 +278,3 @@ rule apply_sample_missingness:
             --threads {threads} \
             --memory {resources.mem_mb}
         """
-
-
-
-
-

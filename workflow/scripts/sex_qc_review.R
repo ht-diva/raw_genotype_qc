@@ -21,7 +21,7 @@ option_list <- list(
   make_option(
     "--unmatched-genotypes",
     type = "character",
-    help = "Genotype samples not matched to phenotype metadata"
+    help = "Genotype samples not matched to phenotype file"
   ),
   make_option(
     "--female-max-f",
@@ -243,7 +243,7 @@ if (anyDuplicated(fam[c("FID", "IID")])) {
   )
 }
 
-# Read genotype samples not matched to phenotype metadata ----------------------
+# Read genotype samples not matched to phenotype file ----------------------
 
 unmatched_genotypes <- fread(
   args[["unmatched-genotypes"]],
@@ -330,7 +330,7 @@ samples$REPORTED_SEX[
     !samples$REPORTED_SEX %in% c(1L, 2L)
 ] <- 0L
 
-# Determine phenotype-metadata matching status ---------------------------------
+# Determine phenotype matching status ---------------------------------
 
 sample_key <- paste(
   samples$FID,
@@ -344,19 +344,19 @@ unmatched_key <- paste(
   sep = "\r"
 )
 
-samples$METADATA_MATCHED <-
+samples$PHENOTYPE_MATCHED <-
   !sample_key %in% unmatched_key
 
 samples$REPORTED_SEX_STATUS <- "AVAILABLE"
 
 samples$REPORTED_SEX_STATUS[
   samples$REPORTED_SEX == 0L &
-    !samples$METADATA_MATCHED
+    !samples$PHENOTYPE_MATCHED
 ] <- "GENOTYPE_NOT_MATCHED_TO_PHENOTYPE"
 
 samples$REPORTED_SEX_STATUS[
   samples$REPORTED_SEX == 0L &
-    samples$METADATA_MATCHED
+    samples$PHENOTYPE_MATCHED
 ] <- "MISSING_OR_UNRECOGNISED_PHENOTYPE_SEX"
 
 # Classify genetic sex ----------------------------------------------------------
@@ -493,7 +493,7 @@ output_columns <- c(
   "FID",
   "IID",
   "F",
-  "METADATA_MATCHED",
+  "PHENOTYPE_MATCHED",
   "REPORTED_SEX",
   "REPORTED_SEX_LABEL",
   "REPORTED_SEX_STATUS",

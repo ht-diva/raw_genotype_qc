@@ -73,11 +73,49 @@ rule create_x_qc_markers:
             --memory 11000
         """
 
+rule prune_x_qc_markers:
+    input:
+        bed=rules.create_x_qc_markers.output.bed,
+        bim=rules.create_x_qc_markers.output.bim,
+        fam=rules.create_x_qc_markers.output.fam,
+    output:
+        prune_in=ws_path("sex_qc/x_pruned/markers.prune.in"),
+        prune_out=ws_path("sex_qc/x_pruned/markers.prune.out"),
+        log=ws_path("sex_qc/x_pruned/markers.log"),
+    container:
+        "docker://gitlab.fht.org:5050/hds-center/containers/plink2:0e8e82d8"
+    threads:
+        8
+    resources:
+        runtime=60,
+        mem_mb=8000,
+    params:
+        bfile=ws_path("sex_qc/x_qc/genotype"),
+        prefix=ws_path("sex_qc/x_pruned/markers"),
+        window_kb=lambda wc: cfg("ld_pruning/window_kb"),
+        step_variants=lambda wc: cfg("ld_pruning/step_variants"),
+        r2=lambda wc: cfg("ld_pruning/r2"),
+    shell:
+        r"""
+        set -euo pipefail
+        mkdir -p "$(dirname "{output.prune_in}")"
+
+        plink2 \
+            --bfile "{params.bfile}" \
+            --indep-pairwise "{params.window_kb}kb" \
+                "{params.step_variants}" "{params.r2}" \
+            --out "{params.prefix}" \
+            --threads {threads} \
+            --memory 7500
+        """
+
+
 rule check_sex_candidate_thresholds:
     input:
         bed=rules.create_x_qc_markers.output.bed,
         bim=rules.create_x_qc_markers.output.bim,
         fam=rules.create_x_qc_markers.output.fam,
+        prune_in=rules.prune_x_qc_markers.output.prune_in,
     output:
         sexcheck=ws_path(
             "sex_qc/sex_candidate.sexcheck"
@@ -111,6 +149,7 @@ rule check_sex_candidate_thresholds:
 
         plink2 \
             --bfile "{params.bfile}" \
+            --extract "{input.prune_in}" \
             --check-sex \
                 max-female-xf="{params.female_max}" \
                 min-male-xf="{params.male_min}" \

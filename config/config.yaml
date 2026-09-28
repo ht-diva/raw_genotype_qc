@@ -1,18 +1,23 @@
 run:
   delivery: False
 
+# Restrict samples to the selected assay before phenotype matching and QC.
+# false skips the keep file; external exclusions and QC still apply.
+keep_ids:
+  enabled: true
+  type: "proteomics"  # proteomics or metabolomics
+  proteomics: "/center/healthds/pQTL/BELIEVE/common_ID_cleaned.txt"
+  metabolomics: null
 
 #paths
 bed_path: "/processing_data/shared_datasets/plasma_proteome/believe/raw_data/genotypes/BELIEVE_imputed/CAMBRIDGE-BELIEVE_Freeze_One.GxS.bed"
 bim_path: "/processing_data/shared_datasets/plasma_proteome/believe/raw_data/genotypes/BELIEVE_imputed/CAMBRIDGE-BELIEVE_Freeze_One.GxS.bim"
 fam_path: "/processing_data/shared_datasets/plasma_proteome/believe/raw_data/genotypes/BELIEVE_imputed/CAMBRIDGE-BELIEVE_Freeze_One.GxS.fam"
 
-match_proteomics_id: "/center/healthds/pQTL/BELIEVE/common_ID_cleaned.txt"
-
-# TSV columns: FID, IID, SEX (1=male, 2=female, 0=unknown)
-sample_metadata:
+# Phenotype file and columns used to match samples and obtain reported sex.
+phenotype:
   path: "/processing_data/shared_datasets/plasma_proteome/believe/raw_data/phenotypes/analysis.dta"
-  phenotype_id_col: "genid"
+  phenotype_id_col: "RegGen_GxS"
   sex_col: "sex"
   genotype_id_mode: "regex"
   genotype_id_regex: '^CAMBRIDGE-BELIEVE_([0-9]+)_[0-9]+$'
@@ -49,7 +54,7 @@ accepted_sex_thresholds: "config/accepted_sex_thresholds.yaml"
 ld_pruning:
   window_kb: 50
   step_variants: 5
-  r2: 0.5
+  r2: 0.2
 
 pca:
   components: 20

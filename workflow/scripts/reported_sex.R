@@ -1,22 +1,22 @@
 #!/usr/bin/env Rscript
 
 # Prepare a PLINK-compatible sex update file by matching samples
-# from a FAM file with phenotype metadata.
+# from a FAM file with a phenotype file.
 #
 # The script:
 #   1. Reads the PLINK FAM file.
-#   2. Reads phenotype metadata from DTA, CSV, CSV.GZ, TSV, or TXT.
+#   2. Reads a phenotype file in DTA, CSV, CSV.GZ, TSV, or TXT format.
 #   3. Normalizes genotype and phenotype sample identifiers.
-#   4. Matches genotype samples to phenotype metadata.
+#   4. Matches genotype samples to the phenotype file.
 #   5. Converts reported sex values to PLINK codes:
 #        1 = male
 #        2 = female
 #        0 = unknown
 #   6. Produces a PLINK --update-sex file.
-#   7. Reports unmatched genotype and metadata samples.
+#   7. Reports unmatched genotype and phenotype samples.
 #   8. Produces a summary report.
 #
-# The original FAM and metadata files are not modified.
+# The original FAM and phenotype files are not modified.
 
 
 # ----------------------------------------------------------
@@ -41,22 +41,22 @@ option_list <- list(
         help = "Input PLINK FAM file"
     ),
     make_option(
-        "--metadata",
+        "--phenotype",
         type = "character",
         help = paste(
-            "Input phenotype metadata file.",
+            "Input phenotype file.",
             "Supported formats: DTA, CSV, CSV.GZ, TSV, and TXT."
         )
     ),
     make_option(
         "--phenotype-id-col",
         type = "character",
-        help = "Metadata column containing the sample identifier"
+        help = "Phenotype column containing the sample identifier"
     ),
     make_option(
         "--sex-col",
         type = "character",
-        help = "Metadata column containing reported sex"
+        help = "Phenotype column containing reported sex"
     ),
     make_option(
         "--genotype-id-mode",
@@ -90,7 +90,7 @@ option_list <- list(
         type = "character",
         default = "1,M,Male",
         help = paste(
-            "Comma-separated metadata values interpreted as male",
+            "Comma-separated phenotype values interpreted as male",
             "[default: %default]"
         )
     ),
@@ -99,7 +99,7 @@ option_list <- list(
         type = "character",
         default = "2,F,Female",
         help = paste(
-            "Comma-separated metadata values interpreted as female",
+            "Comma-separated phenotype values interpreted as female",
             "[default: %default]"
         )
     ),
@@ -116,12 +116,12 @@ option_list <- list(
     make_option(
         "--unmatched-genotypes",
         type = "character",
-        help = "Output file listing genotype samples absent from metadata"
+        help = "Output file listing genotype samples absent from phenotype"
     ),
     make_option(
-        "--unmatched-metadata",
+        "--unmatched-phenotype",
         type = "character",
-        help = "Output file listing metadata IDs absent from the FAM"
+        help = "Output file listing phenotype IDs absent from the FAM"
     )
 )
 
@@ -136,13 +136,13 @@ opt <- parse_args(
 
 required_options <- c(
     "fam",
-    "metadata",
+    "phenotype",
     "phenotype-id-col",
     "sex-col",
     "update-sex",
     "report",
     "unmatched-genotypes",
-    "unmatched-metadata"
+    "unmatched-phenotype"
 )
 
 for (option_name in required_options) {
@@ -189,6 +189,9 @@ names(fam) <- c(
     "PHENO"
 )
 
+# Keep genotype IDs as strings for regex extraction and phenotype matching.
+fam$IID <- as.character(fam$IID)
+
 
 # ----------------------------------------------------------
 # 5. Define a function for writing summary metrics
@@ -215,14 +218,14 @@ write_metric <- function(values) {
 # 6. Optionally use sex values directly from the FAM file
 # ----------------------------------------------------------
 
-# External metadata matching is skipped when:
-#   - --metadata is set to "NA"; or
+# External phenotype matching is skipped when:
+#   - --phenotype is set to "NA"; or
 #   - --genotype-id-mode is set to "fam".
 #
 # In this mode, the existing FAM sex values are copied directly
 # to the PLINK update-sex file.
 if (
-    opt$metadata == "NA" ||
+    opt$phenotype == "NA" ||
     tolower(opt$`genotype-id-mode`) == "fam"
 ) {
     # Write FID, IID, and existing FAM sex without a header.
@@ -235,7 +238,7 @@ if (
         quote = FALSE
     )
 
-    # No genotype samples are unmatched because metadata matching
+    # No genotype samples are unmatched because phenotype matching
     # is not performed in this mode.
     write.table(
         data.frame(
@@ -248,12 +251,12 @@ if (
         quote = FALSE
     )
 
-    # Create an empty unmatched-metadata report.
+    # Create an empty unmatched-phenotype report.
     write.table(
         data.frame(
-            METADATA_ID = character()
+            PHENOTYPE_ID = character()
         ),
-        file = opt$`unmatched-metadata`,
+        file = opt$`unmatched-phenotype`,
         sep = "\t",
         row.names = FALSE,
         quote = FALSE
@@ -266,7 +269,7 @@ if (
             genotype_samples = nrow(fam),
             matched = nrow(fam),
             genotype_only = 0,
-            metadata_only = 0,
+            phenotype_only = 0,
             missing_reported_sex = sum(
                 !fam$SEX %in% c("1", "2")
             )
@@ -278,10 +281,10 @@ if (
 
 
 # ----------------------------------------------------------
-# 7. Define a function for reading phenotype metadata
+# 7. Define a function for reading phenotype file
 # ----------------------------------------------------------
 
-read_metadata <- function(path) {
+read_phenotype <- function(path) {
     lowercase_path <- tolower(path)
 
     # Read Stata files.
@@ -312,24 +315,24 @@ read_metadata <- function(path) {
 
 
 # ----------------------------------------------------------
-# 8. Read and validate the phenotype metadata
+# 8. Read and validate the phenotype file
 # ----------------------------------------------------------
 
-metadata <- read_metadata(opt$metadata)
+phenotype <- read_phenotype(opt$phenotype)
 
 phenotype_id_column <- opt$`phenotype-id-col`
 sex_column <- opt$`sex-col`
 
 # Ensure that the requested sample ID and sex columns exist.
 if (
-    !phenotype_id_column %in% names(metadata) ||
-    !sex_column %in% names(metadata)
+    !phenotype_id_column %in% names(phenotype) ||
+    !sex_column %in% names(phenotype)
 ) {
     stop(
         paste(
-            "Phenotype ID or sex column missing from metadata.",
+            "Phenotype ID or sex column missing from phenotype.",
             "Available columns:",
-            paste(names(metadata), collapse = ", ")
+            paste(names(phenotype), collapse = ", ")
         ),
         call. = FALSE
     )
@@ -443,11 +446,11 @@ if (genotype_id_mode == "regex") {
 
 
 # ----------------------------------------------------------
-# 11. Create normalized matching IDs for the metadata
+# 11. Create normalized matching IDs for the phenotype
 # ----------------------------------------------------------
 
-metadata$MATCH_ID <- normalize_id(
-    metadata[[phenotype_id_column]]
+phenotype$MATCH_ID <- normalize_id(
+    as.character(phenotype[[phenotype_id_column]])
 )
 
 
@@ -455,19 +458,19 @@ metadata$MATCH_ID <- normalize_id(
 # 12. Check for duplicated phenotype IDs
 # ----------------------------------------------------------
 
-# Missing metadata IDs are excluded from the duplicate check.
-nonmissing_metadata_ids <- metadata$MATCH_ID[
-    !is.na(metadata$MATCH_ID)
+# Missing phenotype IDs are excluded from the duplicate check.
+nonmissing_phenotype_ids <- phenotype$MATCH_ID[
+    !is.na(phenotype$MATCH_ID)
 ]
 
-# Duplicated normalized IDs would make genotype-to-metadata
+# Duplicated normalized IDs would make genotype-to-phenotype
 # matching ambiguous, so the script stops if they are detected.
-if (anyDuplicated(nonmissing_metadata_ids)) {
+if (anyDuplicated(nonmissing_phenotype_ids)) {
     duplicated_ids <- unique(
-        nonmissing_metadata_ids[
-            duplicated(nonmissing_metadata_ids) |
+        nonmissing_phenotype_ids[
+            duplicated(nonmissing_phenotype_ids) |
             duplicated(
-                nonmissing_metadata_ids,
+                nonmissing_phenotype_ids,
                 fromLast = TRUE
             )
         ]
@@ -539,28 +542,28 @@ sex_to_plink <- function(values) {
     )
 }
 
-metadata$PLINK_SEX <- sex_to_plink(
-    metadata[[sex_column]]
+phenotype$PLINK_SEX <- sex_to_plink(
+    phenotype[[sex_column]]
 )
 
 
 # ----------------------------------------------------------
-# 15. Match genotype samples to phenotype metadata
+# 15. Match genotype samples to phenotype file
 # ----------------------------------------------------------
 
 # For every genotype sample, return the position of its MATCH_ID
-# in the metadata. An unmatched sample receives NA.
+# in the phenotype. An unmatched sample receives NA.
 match_index <- match(
     fam$MATCH_ID,
-    metadata$MATCH_ID
+    phenotype$MATCH_ID
 )
 
-# Use the metadata sex when a match exists. Assign PLINK sex code
-# 0 when the genotype sample is not present in the metadata.
+# Use the phenotype sex when a match exists. Assign PLINK sex code
+# 0 when the genotype sample is not present in the phenotype.
 plink_sex <- ifelse(
     is.na(match_index),
     "0",
-    metadata$PLINK_SEX[match_index]
+    phenotype$PLINK_SEX[match_index]
 )
 
 
@@ -585,7 +588,7 @@ write.table(
 
 
 # ----------------------------------------------------------
-# 17. Write genotype samples not found in the metadata
+# 17. Write genotype samples not found in the phenotype
 # ----------------------------------------------------------
 
 unmatched_genotype_rows <- is.na(match_index)
@@ -604,29 +607,29 @@ write.table(
 
 
 # ----------------------------------------------------------
-# 18. Write metadata IDs not found in the genotype data
+# 18. Write phenotype IDs not found in the genotype data
 # ----------------------------------------------------------
 
-# Identify metadata IDs used by at least one genotype sample.
-used_metadata_ids <- unique(
+# Identify phenotype IDs used by at least one genotype sample.
+used_phenotype_ids <- unique(
     fam$MATCH_ID[!is.na(match_index)]
 )
 
-# Metadata IDs not used by genotype samples are reported.
-unmatched_metadata_rows <- !(
-    metadata$MATCH_ID %in% used_metadata_ids
+# Phenotype IDs not used by genotype samples are reported.
+unmatched_phenotype_rows <- !(
+    phenotype$MATCH_ID %in% used_phenotype_ids
 )
 
 write.table(
     data.frame(
-        METADATA_ID = metadata[[phenotype_id_column]][
-            unmatched_metadata_rows
+        PHENOTYPE_ID = phenotype[[phenotype_id_column]][
+            unmatched_phenotype_rows
         ],
-        MATCH_ID = metadata$MATCH_ID[
-            unmatched_metadata_rows
+        MATCH_ID = phenotype$MATCH_ID[
+            unmatched_phenotype_rows
         ]
     ),
-    file = opt$`unmatched-metadata`,
+    file = opt$`unmatched-phenotype`,
     sep = "\t",
     row.names = FALSE,
     quote = FALSE
@@ -641,10 +644,10 @@ write_metric(
     c(
         mode = genotype_id_mode,
         genotype_samples = nrow(fam),
-        metadata_rows = nrow(metadata),
+        phenotype_rows = nrow(phenotype),
         matched = sum(!is.na(match_index)),
         genotype_only = sum(is.na(match_index)),
-        metadata_only = sum(unmatched_metadata_rows),
+        phenotype_only = sum(unmatched_phenotype_rows),
         missing_reported_sex = sum(plink_sex == "0")
     )
 )

@@ -48,11 +48,11 @@ rule inspect_bed_input:
 
 rule prepare_reported_sex:
     input:
-        # FAM file already validated by inspect_bed_input.
-        fam=config["fam_path"],
+        # Work only with samples selected at the start of the pipeline.
+        fam=ws_path("external_samples/genotype.fam"),
 
-        # Metadata containing sample IDs and reported sex.
-        metadata=config["sample_metadata"]["path"],
+        # Phenotype containing sample IDs and reported sex.
+        phenotype=config["phenotype"]["path"],
 
         # Ensures that input validation is completed successfully
         # before this rule starts.
@@ -63,68 +63,68 @@ rule prepare_reported_sex:
             "standardization/reported_sex.update.tsv"
         ),
 
-        # Summary of genotype-metadata matching.
+        # Summary of genotype-phenotype matching.
         report=ws_path(
-            "standardization/sample_metadata_report.tsv"
+            "standardization/phenotype_matching_report.tsv"
         ),
 
-        # Genotyped samples that were not found in the metadata.
+        # Genotyped samples that were not found in the phenotype.
         unmatched_genotypes=ws_path(
-            "standardization/genotype_without_metadata.tsv"
+            "standardization/genotype_without_phenotype.tsv"
         ),
 
-        # Metadata records that were not found in the genotype data.
-        unmatched_metadata=ws_path(
-            "standardization/metadata_without_genotype.tsv"
+        # Phenotype records that were not found in the genotype data.
+        unmatched_phenotype=ws_path(
+            "standardization/phenotype_without_genotype.tsv"
         ),
 
     params:
-        # Metadata column containing the sample identifier.
+        # Phenotype column containing the sample identifier.
         phenotype_id_col=lambda wc: cfg(
-            "sample_metadata/phenotype_id_col",
+            "phenotype/phenotype_id_col",
             "IID",
         ),
 
-        # Metadata column containing reported sex.
+        # Phenotype column containing reported sex.
         sex_col=lambda wc: cfg(
-            "sample_metadata/sex_col",
+            "phenotype/sex_col",
             "SEX",
         ),
 
-        # Method used to match FAM and metadata sample IDs.
+        # Method used to match FAM and phenotype sample IDs.
         genotype_id_mode=lambda wc: cfg(
-            "sample_metadata/genotype_id_mode",
+            "phenotype/genotype_id_mode",
             "direct",
         ),
 
         # Regular expression used only in regex matching mode.
         genotype_id_regex=lambda wc: (
-            cfg("sample_metadata/genotype_id_regex") or "NA"
+            cfg("phenotype/genotype_id_regex") or "NA"
         ),
 
         # Method used to normalize sample IDs before matching.
         id_normalization=lambda wc: cfg(
-            "sample_metadata/id_normalization",
+            "phenotype/id_normalization",
             "string",
         ),
 
-        # Metadata values interpreted as male.
+        # Phenotype values interpreted as male.
         male_values=lambda wc: ",".join(
             map(
                 str,
                 cfg(
-                    "sample_metadata/male_values",
+                    "phenotype/male_values",
                     [1, "M", "Male"],
                 ),
             )
         ),
 
-        # Metadata values interpreted as female.
+        # Phenotype values interpreted as female.
         female_values=lambda wc: ",".join(
             map(
                 str,
                 cfg(
-                    "sample_metadata/female_values",
+                    "phenotype/female_values",
                     [2, "F", "Female"],
                 ),
             )
@@ -137,7 +137,7 @@ rule prepare_reported_sex:
 
         Rscript workflow/scripts/reported_sex.R \
             --fam "{input.fam}" \
-            --metadata "{input.metadata}" \
+            --phenotype "{input.phenotype}" \
             --phenotype-id-col "{params.phenotype_id_col}" \
             --sex-col "{params.sex_col}" \
             --genotype-id-mode "{params.genotype_id_mode}" \
@@ -148,15 +148,15 @@ rule prepare_reported_sex:
             --update-sex "{output.update_sex}" \
             --report "{output.report}" \
             --unmatched-genotypes "{output.unmatched_genotypes}" \
-            --unmatched-metadata "{output.unmatched_metadata}"
+            --unmatched-phenotype "{output.unmatched_phenotype}"
         """
 
 
 rule standardize_genotype_pgen:
     input:
-        bed=config["bed_path"],
-        bim=config["bim_path"],
-        fam=config["fam_path"],
+        bed=ws_path("external_samples/genotype.bed"),
+        bim=ws_path("external_samples/genotype.bim"),
+        fam=ws_path("external_samples/genotype.fam"),
         chromosome_map=rules.inspect_bed_input.output.chr_map,
         update_sex=rules.prepare_reported_sex.output.update_sex,
     output:
@@ -180,9 +180,7 @@ rule standardize_genotype_pgen:
         runtime=90,
         mem_mb=12000,
     params:
-        source=str(
-            Path(config["bed_path"]).with_suffix("")
-        ),
+        source=ws_path("external_samples/genotype"),
         prefix=ws_path(
             "standardization/genotype_sorted"
         ),

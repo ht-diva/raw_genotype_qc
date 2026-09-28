@@ -125,6 +125,11 @@ rule all:
             ws_path("sex_qc/x_qc/genotype.fam"),
             ws_path("sex_qc/x_qc/genotype.log"),
 
+            # LD-pruned X markers used for the candidate sex check
+            ws_path("sex_qc/x_pruned/markers.prune.in"),
+            ws_path("sex_qc/x_pruned/markers.prune.out"),
+            ws_path("sex_qc/x_pruned/markers.log"),
+
             # Candidate sex check
             ws_path("sex_qc/sex_candidate.sexcheck"),
             ws_path("sex_qc/sex_candidate.log"),

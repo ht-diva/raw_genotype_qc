@@ -12,6 +12,12 @@ suppressPackageStartupMessages({
 
 option_list <- list(
     make_option(
+        "--keep-enabled",
+        type = "character",
+        default = "true",
+        help = "Apply the omics keep file: true or false"
+    ),
+    make_option(
         "--fam",
         type = "character",
         help = "Input PLINK FAM file"
@@ -134,7 +140,18 @@ parse_files <- function(value) {
     paths[nzchar(paths)]
 }
 
-keep_files <- parse_files(opt$`keep-files`)
+keep_enabled <- tolower(opt$`keep-enabled`)
+if (!keep_enabled %in% c("true", "false")) {
+    stop("--keep-enabled must be true or false", call. = FALSE)
+}
+keep_files <- if (keep_enabled == "true") {
+    parse_files(opt$`keep-files`)
+} else {
+    character(0)
+}
+if (keep_enabled == "true" && length(keep_files) == 0) {
+    stop("An ID file is required when --keep-enabled is true", call. = FALSE)
+}
 remove_files <- parse_files(opt$`remove-files`)
 
 
@@ -234,14 +251,29 @@ read_sample_ids <- function(path, fam_data) {
 
 eligible_ids <- unique(fam$IID)
 
-report_rows <- list()
-report_index <- 1L
+report_rows <- list(data.frame(
+    file = "__KEEP_IDS__",
+    operation = if (keep_enabled == "true") "ENABLED" else "DISABLED",
+    matched_ids = NA_integer_,
+    stringsAsFactors = FALSE
+))
+report_index <- 2L
 
 for (keep_file in keep_files) {
     file_ids <- read_sample_ids(
         keep_file,
         fam
     )
+
+    if (length(file_ids) == 0) {
+        stop(
+            paste(
+                "No genotype IIDs from the FAM matched the keep file:",
+                keep_file
+            ),
+            call. = FALSE
+        )
+    }
 
     eligible_ids <- intersect(
         eligible_ids,
@@ -299,6 +331,10 @@ final_ids <- setdiff(
     eligible_ids,
     remove_ids
 )
+
+if (length(final_ids) == 0) {
+    stop("No samples remain after initial sample selection", call. = FALSE)
+}
 
 kept_samples <- fam[
     fam$IID %in% final_ids,
