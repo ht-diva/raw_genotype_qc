@@ -1,665 +1,700 @@
 #!/usr/bin/env Rscript
 
-# Prepare a PLINK-compatible sex update file by matching samples
-# from a FAM file with a phenotype file.
-#
-# The script:
-#   1. Reads the PLINK FAM file.
-#   2. Reads a phenotype file in DTA, CSV, CSV.GZ, TSV, or TXT format.
-#   3. Normalizes genotype and phenotype sample identifiers.
-#   4. Matches genotype samples to the phenotype file.
-#   5. Converts reported sex values to PLINK codes:
-#        1 = male
-#        2 = female
-#        0 = unknown
-#   6. Produces a PLINK --update-sex file.
-#   7. Reports unmatched genotype and phenotype samples.
-#   8. Produces a summary report.
-#
-# The original FAM and phenotype files are not modified.
-
-
-# ----------------------------------------------------------
-# 1. Load required R packages
-# ----------------------------------------------------------
-
 suppressPackageStartupMessages({
-    library(optparse)
-    library(data.table)
+  library(optparse)
+  library(data.table)
 })
 
-
-# ----------------------------------------------------------
-# 2. Define command-line arguments
-# ----------------------------------------------------------
+# Command-line options ----------------------------------------------------------
 
 option_list <- list(
-    make_option(
-        "--fam",
-        type = "character",
-        help = "Input PLINK FAM file"
-    ),
-    make_option(
-        "--phenotype",
-        type = "character",
-        help = paste(
-            "Input phenotype file.",
-            "Supported formats: DTA, CSV, CSV.GZ, TSV, and TXT."
-        )
-    ),
-    make_option(
-        "--phenotype-id-col",
-        type = "character",
-        help = "Phenotype column containing the sample identifier"
-    ),
-    make_option(
-        "--sex-col",
-        type = "character",
-        help = "Phenotype column containing reported sex"
-    ),
-    make_option(
-        "--genotype-id-mode",
-        type = "character",
-        default = "direct",
-        help = paste(
-            "Method used to obtain the genotype matching ID:",
-            "fam, direct, or regex [default: %default]"
-        )
-    ),
-    make_option(
-        "--genotype-id-regex",
-        type = "character",
-        default = "NA",
-        help = paste(
-            "Regular expression used to extract the matching ID",
-            "from the FAM IID when genotype-id-mode=regex"
-        )
-    ),
-    make_option(
-        "--id-normalization",
-        type = "character",
-        default = "string",
-        help = paste(
-            "Method used to normalize IDs:",
-            "string or integer_string [default: %default]"
-        )
-    ),
-    make_option(
-        "--male-values",
-        type = "character",
-        default = "1,M,Male",
-        help = paste(
-            "Comma-separated phenotype values interpreted as male",
-            "[default: %default]"
-        )
-    ),
-    make_option(
-        "--female-values",
-        type = "character",
-        default = "2,F,Female",
-        help = paste(
-            "Comma-separated phenotype values interpreted as female",
-            "[default: %default]"
-        )
-    ),
-    make_option(
-        "--update-sex",
-        type = "character",
-        help = "Output PLINK --update-sex file"
-    ),
-    make_option(
-        "--report",
-        type = "character",
-        help = "Output summary report"
-    ),
-    make_option(
-        "--unmatched-genotypes",
-        type = "character",
-        help = "Output file listing genotype samples absent from phenotype"
-    ),
-    make_option(
-        "--unmatched-phenotype",
-        type = "character",
-        help = "Output file listing phenotype IDs absent from the FAM"
-    )
+  make_option(
+    "--sexcheck",
+    type = "character",
+    help = "PLINK sex-check file"
+  ),
+  make_option(
+    "--fam",
+    type = "character",
+    help = "PLINK FAM file"
+  ),
+  make_option(
+    "--unmatched-genotypes",
+    type = "character",
+    help = "Genotype samples not matched to phenotype file"
+  ),
+  make_option(
+    "--female-max-f",
+    type = "double",
+    help = "Maximum chrX F for genetic females"
+  ),
+  make_option(
+    "--male-min-f",
+    type = "double",
+    help = "Minimum chrX F for genetic males"
+  ),
+  make_option(
+    "--exclude-ambiguous",
+    type = "character",
+    help = "Exclude ambiguous genetic-sex calls"
+  ),
+  make_option(
+    "--exclude-discordant",
+    type = "character",
+    help = "Exclude discordant reported/genetic-sex calls"
+  ),
+  make_option(
+    "--plot",
+    type = "character",
+    help = "Output diagnostic PDF"
+  ),
+  make_option(
+    "--table",
+    type = "character",
+    help = "Output sample-level classification TSV"
+  ),
+  make_option(
+    "--candidate-thresholds",
+    type = "character",
+    help = "Output candidate-threshold YAML"
+  ),
+  make_option(
+    "--summary",
+    type = "character",
+    help = "Output summary TSV"
+  )
 )
 
-opt <- parse_args(
-    OptionParser(option_list = option_list)
+args <- parse_args(
+  OptionParser(option_list = option_list)
 )
 
+# Validate arguments ------------------------------------------------------------
 
-# ----------------------------------------------------------
-# 3. Check required command-line arguments
-# ----------------------------------------------------------
-
-required_options <- c(
-    "fam",
-    "phenotype",
-    "phenotype-id-col",
-    "sex-col",
-    "update-sex",
-    "report",
-    "unmatched-genotypes",
-    "unmatched-phenotype"
+required_args <- c(
+  "sexcheck",
+  "fam",
+  "unmatched-genotypes",
+  "female-max-f",
+  "male-min-f",
+  "exclude-ambiguous",
+  "exclude-discordant",
+  "plot",
+  "table",
+  "candidate-thresholds",
+  "summary"
 )
 
-for (option_name in required_options) {
-    if (is.null(opt[[option_name]])) {
-        stop(
-            paste("Missing required option:", option_name),
-            call. = FALSE
-        )
-    }
-}
-
-
-# ----------------------------------------------------------
-# 4. Read and validate the PLINK FAM file
-# ----------------------------------------------------------
-
-# Read every FAM column as character. This preserves sample IDs
-# containing leading zeros, such as "00123".
-fam <- fread(
-    opt$fam,
-    header = FALSE,
-    data.table = FALSE,
-    colClasses = "character"
-)
-
-# A standard PLINK FAM file must contain at least six fields:
-# FID IID PAT MAT SEX PHENOTYPE
-if (ncol(fam) < 6) {
-    stop(
-        "FAM has fewer than 6 fields",
-        call. = FALSE
-    )
-}
-
-# Retain the first six columns and assign standard PLINK names.
-fam <- fam[, 1:6]
-
-names(fam) <- c(
-    "FID",
-    "IID",
-    "PAT",
-    "MAT",
-    "SEX",
-    "PHENO"
-)
-
-# Keep genotype IDs as strings for regex extraction and phenotype matching.
-fam$IID <- as.character(fam$IID)
-
-
-# ----------------------------------------------------------
-# 5. Define a function for writing summary metrics
-# ----------------------------------------------------------
-
-write_metric <- function(values) {
-    report <- data.frame(
-        metric = names(values),
-        value = unname(values),
-        check.names = FALSE
-    )
-
-    write.table(
-        report,
-        file = opt$report,
-        sep = "\t",
-        row.names = FALSE,
-        quote = FALSE
-    )
-}
-
-
-# ----------------------------------------------------------
-# 6. Optionally use sex values directly from the FAM file
-# ----------------------------------------------------------
-
-# External phenotype matching is skipped when:
-#   - --phenotype is set to "NA"; or
-#   - --genotype-id-mode is set to "fam".
-#
-# In this mode, the existing FAM sex values are copied directly
-# to the PLINK update-sex file.
-if (
-    opt$phenotype == "NA" ||
-    tolower(opt$`genotype-id-mode`) == "fam"
-) {
-    # Write FID, IID, and existing FAM sex without a header.
-    write.table(
-        fam[, c("FID", "IID", "SEX")],
-        file = opt$`update-sex`,
-        sep = "\t",
-        row.names = FALSE,
-        col.names = FALSE,
-        quote = FALSE
-    )
-
-    # No genotype samples are unmatched because phenotype matching
-    # is not performed in this mode.
-    write.table(
-        data.frame(
-            FID = character(),
-            IID = character()
-        ),
-        file = opt$`unmatched-genotypes`,
-        sep = "\t",
-        row.names = FALSE,
-        quote = FALSE
-    )
-
-    # Create an empty unmatched-phenotype report.
-    write.table(
-        data.frame(
-            PHENOTYPE_ID = character()
-        ),
-        file = opt$`unmatched-phenotype`,
-        sep = "\t",
-        row.names = FALSE,
-        quote = FALSE
-    )
-
-    # Record summary statistics.
-    write_metric(
-        c(
-            mode = "fam",
-            genotype_samples = nrow(fam),
-            matched = nrow(fam),
-            genotype_only = 0,
-            phenotype_only = 0,
-            missing_reported_sex = sum(
-                !fam$SEX %in% c("1", "2")
-            )
-        )
-    )
-
-    quit(save = "no")
-}
-
-
-# ----------------------------------------------------------
-# 7. Define a function for reading phenotype file
-# ----------------------------------------------------------
-
-read_phenotype <- function(path) {
-    if (!file.exists(path)) {
-        stop(
-            paste("Phenotype file not found; check phenotype.path in the config:", path),
-            call. = FALSE
-        )
-    }
-
-    lowercase_path <- tolower(path)
-
-    # Read Stata files.
-    if (grepl("\\.dta$", lowercase_path)) {
-        if (!requireNamespace("haven", quietly = TRUE)) {
-            stop(
-                "Reading a .dta phenotype file requires haven (Conda package r-haven).",
-                call. = FALSE
-            )
-        }
-        return(
-            as.data.frame(haven::read_dta(path))
-        )
-    }
-
-    # Read uncompressed or gzip-compressed CSV files.
-    if (grepl("\\.csv(\\.gz)?$", lowercase_path)) {
-        return(
-            fread(
-                path,
-                data.table = FALSE
-            )
-        )
-    }
-
-    # Automatically detect the delimiter for other text formats,
-    # including TSV and TXT files.
-    fread(
-        path,
-        data.table = FALSE,
-        sep = "auto"
-    )
-}
-
-
-# ----------------------------------------------------------
-# 8. Read and validate the phenotype file
-# ----------------------------------------------------------
-
-phenotype <- read_phenotype(opt$phenotype)
-
-phenotype_id_column <- opt$`phenotype-id-col`
-sex_column <- opt$`sex-col`
-
-# Ensure that the requested sample ID and sex columns exist.
-if (
-    !phenotype_id_column %in% names(phenotype) ||
-    !sex_column %in% names(phenotype)
-) {
-    stop(
-        paste(
-            "Phenotype ID or sex column missing from phenotype.",
-            "Available columns:",
-            paste(names(phenotype), collapse = ", ")
-        ),
-        call. = FALSE
-    )
-}
-
-
-# ----------------------------------------------------------
-# 9. Define a function for normalizing sample IDs
-# ----------------------------------------------------------
-
-normalize_id <- function(ids) {
-    # Convert IDs to character and remove surrounding whitespace.
-    ids <- trimws(as.character(ids))
-
-    # Treat missing and empty identifiers as NA.
-    ids[is.na(ids) | ids == ""] <- NA_character_
-
-    # Optionally convert numeric-looking IDs to integer strings.
-    #
-    # Examples:
-    #   "00123" -> "123"
-    #   "123.0" -> "123"
-    #
-    # This should only be used when leading zeros are not meaningful.
-    if (opt$`id-normalization` == "integer_string") {
-        numeric_ids <- suppressWarnings(
-            as.numeric(ids)
-        )
-
-        valid_numeric_ids <- !is.na(numeric_ids)
-
-        ids[valid_numeric_ids] <- as.character(
-            as.integer(numeric_ids[valid_numeric_ids])
-        )
-    }
-
-    ids
-}
-
-
-# ----------------------------------------------------------
-# 10. Create matching IDs for genotype samples
-# ----------------------------------------------------------
-
-# By default, use the FAM IID directly as the matching ID.
-fam$MATCH_ID <- normalize_id(fam$IID)
-
-genotype_id_mode <- tolower(
-    opt$`genotype-id-mode`
-)
-
-if (genotype_id_mode == "regex") {
-    genotype_id_regex <- opt$`genotype-id-regex`
-
-    if (genotype_id_regex == "NA") {
-        stop(
-            paste(
-                "genotype-id-regex is required",
-                "when genotype-id-mode=regex"
-            ),
-            call. = FALSE
-        )
-    }
-
-    # Extract a matching ID from one FAM IID.
-    #
-    # When the regular expression contains a capture group,
-    # the first captured group is returned. Otherwise, the
-    # complete regular-expression match is returned.
-    extract_one_id <- function(sample_id) {
-        match_information <- regexec(
-            genotype_id_regex,
-            sample_id,
-            perl = TRUE
-        )
-
-        extracted_values <- regmatches(
-            sample_id,
-            match_information
-        )[[1]]
-
-        # Return NA when the regular expression does not match.
-        if (!length(extracted_values)) {
-            return(NA_character_)
-        }
-
-        # Prefer the first capture group when one is available.
-        if (length(extracted_values) >= 2) {
-            return(extracted_values[2])
-        }
-
-        extracted_values[1]
-    }
-
-    fam$MATCH_ID <- normalize_id(
-        vapply(
-            fam$IID,
-            extract_one_id,
-            character(1)
-        )
-    )
-} else if (genotype_id_mode != "direct") {
-    stop(
-        paste(
-            "genotype-id-mode must be",
-            "fam, direct, or regex"
-        ),
-        call. = FALSE
-    )
-}
-
-
-# ----------------------------------------------------------
-# 11. Create normalized matching IDs for the phenotype
-# ----------------------------------------------------------
-
-phenotype$MATCH_ID <- normalize_id(
-    as.character(phenotype[[phenotype_id_column]])
-)
-
-
-# ----------------------------------------------------------
-# 12. Check for duplicated phenotype IDs
-# ----------------------------------------------------------
-
-# Missing phenotype IDs are excluded from the duplicate check.
-nonmissing_phenotype_ids <- phenotype$MATCH_ID[
-    !is.na(phenotype$MATCH_ID)
+missing_args <- required_args[
+  vapply(
+    required_args,
+    function(argument) {
+      is.null(args[[argument]]) ||
+        length(args[[argument]]) == 0L
+    },
+    logical(1)
+  )
 ]
 
-# Duplicated normalized IDs would make genotype-to-phenotype
-# matching ambiguous, so the script stops if they are detected.
-if (anyDuplicated(nonmissing_phenotype_ids)) {
-    duplicated_ids <- unique(
-        nonmissing_phenotype_ids[
-            duplicated(nonmissing_phenotype_ids) |
-            duplicated(
-                nonmissing_phenotype_ids,
-                fromLast = TRUE
-            )
-        ]
-    )
-
-    stop(
-        paste(
-            "Duplicate phenotype IDs found after ID normalization, e.g.",
-            paste(
-                head(duplicated_ids, 10),
-                collapse = ", "
-            )
-        ),
-        call. = FALSE
-    )
+if (length(missing_args)) {
+  stop(
+    "Missing required option(s): ",
+    paste0("--", missing_args, collapse = ", "),
+    call. = FALSE
+  )
 }
 
+female_max_f <- args[["female-max-f"]]
+male_min_f <- args[["male-min-f"]]
 
-# ----------------------------------------------------------
-# 13. Define the recognized male and female values
-# ----------------------------------------------------------
-
-# Convert the comma-separated command-line values into
-# lowercase vectors for case-insensitive comparison.
-male_values <- tolower(
-    trimws(
-        strsplit(
-            opt$`male-values`,
-            ",",
-            fixed = TRUE
-        )[[1]]
-    )
-)
-
-female_values <- tolower(
-    trimws(
-        strsplit(
-            opt$`female-values`,
-            ",",
-            fixed = TRUE
-        )[[1]]
-    )
-)
-
-
-# ----------------------------------------------------------
-# 14. Convert reported sex to PLINK codes
-# ----------------------------------------------------------
-
-sex_to_plink <- function(values) {
-    standardized_values <- tolower(
-        trimws(
-            as.character(values)
-        )
-    )
-
-    ifelse(
-        is.na(standardized_values),
-        "0",
-        ifelse(
-            standardized_values %in% male_values,
-            "1",
-            ifelse(
-                standardized_values %in% female_values,
-                "2",
-                "0"
-            )
-        )
-    )
+parse_boolean <- function(value, option_name) {
+  normalized <- tolower(trimws(value))
+  if (normalized %in% c("true", "t", "1", "yes", "y")) return(TRUE)
+  if (normalized %in% c("false", "f", "0", "no", "n")) return(FALSE)
+  stop(option_name, " must be true/false, yes/no, or 1/0; received: ", value,
+       call. = FALSE)
 }
 
-phenotype$PLINK_SEX <- sex_to_plink(
-    phenotype[[sex_column]]
+exclude_ambiguous <- parse_boolean(
+  args[["exclude-ambiguous"]], "--exclude-ambiguous"
+)
+exclude_discordant <- parse_boolean(
+  args[["exclude-discordant"]], "--exclude-discordant"
 )
 
+if (
+  !is.finite(female_max_f) ||
+    !is.finite(male_min_f)
+) {
+  stop(
+    "Sex-QC thresholds must be finite numbers.",
+    call. = FALSE
+  )
+}
 
-# ----------------------------------------------------------
-# 15. Match genotype samples to phenotype file
-# ----------------------------------------------------------
+if (female_max_f >= male_min_f) {
+  stop(
+    "female-max-f must be lower than male-min-f.",
+    call. = FALSE
+  )
+}
 
-# For every genotype sample, return the position of its MATCH_ID
-# in the phenotype. An unmatched sample receives NA.
-match_index <- match(
-    fam$MATCH_ID,
-    phenotype$MATCH_ID
+# Create output directories -----------------------------------------------------
+
+output_paths <- c(
+  args$plot,
+  args$table,
+  args[["candidate-thresholds"]],
+  args$summary
 )
 
-# Use the phenotype sex when a match exists. Assign PLINK sex code
-# 0 when the genotype sample is not present in the phenotype.
-plink_sex <- ifelse(
-    is.na(match_index),
-    "0",
-    phenotype$PLINK_SEX[match_index]
+invisible(
+  lapply(
+    unique(dirname(output_paths)),
+    dir.create,
+    recursive = TRUE,
+    showWarnings = FALSE
+  )
 )
 
+# Read PLINK sex-check results --------------------------------------------------
 
-# ----------------------------------------------------------
-# 16. Write the PLINK --update-sex file
-# ----------------------------------------------------------
+sexcheck <- fread(
+  args$sexcheck,
+  data.table = FALSE
+)
 
-# PLINK expects three columns without a header:
-# FID IID SEX
-write.table(
-    data.frame(
-        FID = fam$FID,
-        IID = fam$IID,
-        SEX = plink_sex
+if (!"IID" %in% names(sexcheck)) {
+  stop(
+    "Sex-check file is missing the IID column.",
+    call. = FALSE
+  )
+}
+
+f_column <- intersect(
+  c("F", "XF", "X_F"),
+  names(sexcheck)
+)
+
+if (!length(f_column)) {
+  stop(
+    "Cannot find a chrX F column. Available columns: ",
+    paste(names(sexcheck), collapse = ", "),
+    call. = FALSE
+  )
+}
+
+sexcheck_id_columns <- if ("FID" %in% names(sexcheck)) {
+  c("FID", "IID")
+} else {
+  "IID"
+}
+
+sexcheck <- sexcheck[
+  ,
+  c(sexcheck_id_columns, f_column[1]),
+  drop = FALSE
+]
+
+names(sexcheck)[ncol(sexcheck)] <- "F"
+
+sexcheck$F <- suppressWarnings(
+  as.numeric(sexcheck$F)
+)
+
+if (anyDuplicated(sexcheck[sexcheck_id_columns])) {
+  stop(
+    "Sex-check file contains duplicate sample identifiers.",
+    call. = FALSE
+  )
+}
+
+# Read FAM ----------------------------------------------------------------------
+
+fam <- fread(
+  args$fam,
+  header = FALSE,
+  data.table = FALSE,
+  colClasses = "character"
+)
+
+if (ncol(fam) < 6L) {
+  stop(
+    "Malformed FAM file: expected at least six columns.",
+    call. = FALSE
+  )
+}
+
+fam <- fam[, seq_len(6), drop = FALSE]
+
+names(fam) <- c(
+  "FID",
+  "IID",
+  "PAT",
+  "MAT",
+  "SEX",
+  "PHENO"
+)
+
+if (anyDuplicated(fam[c("FID", "IID")])) {
+  stop(
+    "FAM file contains duplicate FID/IID pairs.",
+    call. = FALSE
+  )
+}
+
+# Read genotype samples not matched to phenotype file ----------------------
+
+unmatched_genotypes <- fread(
+  args[["unmatched-genotypes"]],
+  data.table = FALSE,
+  colClasses = "character"
+)
+
+if (
+  !all(c("FID", "IID") %in% names(unmatched_genotypes))
+) {
+  stop(
+    paste(
+      "The unmatched-genotype file must contain",
+      "FID and IID columns."
     ),
-    file = opt$`update-sex`,
-    sep = "\t",
-    row.names = FALSE,
-    col.names = FALSE,
-    quote = FALSE
+    call. = FALSE
+  )
+}
+
+if (
+  anyDuplicated(
+    unmatched_genotypes[c("FID", "IID")]
+  )
+) {
+  stop(
+    paste(
+      "The unmatched-genotype file contains",
+      "duplicate FID/IID pairs."
+    ),
+    call. = FALSE
+  )
+}
+
+# Join FAM and sex-check results ------------------------------------------------
+
+fam$.FAM_ORDER <- seq_len(nrow(fam))
+
+join_columns <- if ("FID" %in% names(sexcheck)) {
+  c("FID", "IID")
+} else {
+  "IID"
+}
+
+samples <- merge(
+  fam[, c("FID", "IID", "SEX", ".FAM_ORDER")],
+  sexcheck,
+  by = join_columns,
+  all.x = TRUE,
+  sort = FALSE
 )
 
+samples <- samples[
+  order(samples$.FAM_ORDER),
+  ,
+  drop = FALSE
+]
 
-# ----------------------------------------------------------
-# 17. Write genotype samples not found in the phenotype
-# ----------------------------------------------------------
+samples$.FAM_ORDER <- NULL
 
-unmatched_genotype_rows <- is.na(match_index)
+if (nrow(samples) != nrow(fam)) {
+  stop(
+    paste(
+      "Internal join error:",
+      "the classification table and FAM file",
+      "contain different numbers of samples."
+    ),
+    call. = FALSE
+  )
+}
+
+# Standardize reported sex ------------------------------------------------------
+
+# PLINK sex codes:
+#   1 = male
+#   2 = female
+#   0 = unknown
+
+samples$REPORTED_SEX <- suppressWarnings(
+  as.integer(samples$SEX)
+)
+
+samples$REPORTED_SEX[
+  is.na(samples$REPORTED_SEX) |
+    !samples$REPORTED_SEX %in% c(1L, 2L)
+] <- 0L
+
+# Determine phenotype matching status ---------------------------------
+
+sample_key <- paste(
+  samples$FID,
+  samples$IID,
+  sep = "\r"
+)
+
+unmatched_key <- paste(
+  unmatched_genotypes$FID,
+  unmatched_genotypes$IID,
+  sep = "\r"
+)
+
+samples$PHENOTYPE_MATCHED <-
+  !sample_key %in% unmatched_key
+
+samples$REPORTED_SEX_STATUS <- "AVAILABLE"
+
+samples$REPORTED_SEX_STATUS[
+  samples$REPORTED_SEX == 0L &
+    !samples$PHENOTYPE_MATCHED
+] <- "GENOTYPE_NOT_MATCHED_TO_PHENOTYPE"
+
+samples$REPORTED_SEX_STATUS[
+  samples$REPORTED_SEX == 0L &
+    samples$PHENOTYPE_MATCHED
+] <- "MISSING_OR_UNRECOGNISED_PHENOTYPE_SEX"
+
+# Classify genetic sex ----------------------------------------------------------
+
+# F <= female_max_f = female
+# F >= male_min_f   = male
+# Values between the thresholds remain ambiguous.
+
+samples$GENETIC_SEX <- 0L
+
+samples$GENETIC_SEX[
+  is.finite(samples$F) &
+    samples$F <= female_max_f
+] <- 2L
+
+samples$GENETIC_SEX[
+  is.finite(samples$F) &
+    samples$F >= male_min_f
+] <- 1L
+
+# Add readable labels -----------------------------------------------------------
+
+sex_labels <- c(
+  `0` = "unknown",
+  `1` = "male",
+  `2` = "female"
+)
+
+samples$REPORTED_SEX_LABEL <- unname(
+  sex_labels[
+    as.character(samples$REPORTED_SEX)
+  ]
+)
+
+samples$GENETIC_SEX_LABEL <- unname(
+  sex_labels[
+    as.character(samples$GENETIC_SEX)
+  ]
+)
+
+# Compare reported and genetic sex ---------------------------------------------
+
+has_f_value <- is.finite(samples$F)
+
+has_reported_sex <-
+  samples$REPORTED_SEX %in% c(1L, 2L)
+
+has_genetic_sex <-
+  samples$GENETIC_SEX %in% c(1L, 2L)
+
+samples$REPORTED_GENETIC_SEX_MATCH <-
+  has_reported_sex &
+    has_genetic_sex &
+    samples$REPORTED_SEX == samples$GENETIC_SEX
+
+# Assign QC status --------------------------------------------------------------
+
+samples$STATUS <- "OK"
+samples$REVIEW_FLAG <- ""
+
+samples$STATUS[
+  !has_f_value
+] <- "MISSING_GENETIC_SEX"
+
+samples$STATUS[
+  has_f_value &
+    !has_genetic_sex
+] <- "AMBIGUOUS_GENETIC_SEX"
+
+samples$STATUS[
+  has_reported_sex &
+    has_genetic_sex &
+    samples$REPORTED_SEX != samples$GENETIC_SEX
+] <- "DISCORDANT"
+
+samples$STATUS[
+  has_genetic_sex &
+    samples$REPORTED_SEX_STATUS ==
+      "GENOTYPE_NOT_MATCHED_TO_PHENOTYPE"
+] <- "GENOTYPE_NOT_MATCHED_TO_PHENOTYPE"
+
+samples$REVIEW_FLAG[
+  samples$REPORTED_SEX_STATUS ==
+    "GENOTYPE_NOT_MATCHED_TO_PHENOTYPE"
+] <- "WARNING / investigate"
+
+samples$STATUS[
+  has_genetic_sex &
+    samples$REPORTED_SEX_STATUS ==
+      "MISSING_OR_UNRECOGNISED_PHENOTYPE_SEX"
+] <- "MISSING_OR_UNRECOGNISED_PHENOTYPE_SEX"
+
+# Candidate exclusions:
+#   - discordant reported and genetic sex
+#   - ambiguous genetic sex
+samples$EXCLUDE <-
+  (exclude_discordant & samples$STATUS == "DISCORDANT") |
+  (exclude_ambiguous & samples$STATUS == "AMBIGUOUS_GENETIC_SEX")
+
+# Validate reported-sex counts --------------------------------------------------
+
+n_genotype_not_matched <- sum(
+  samples$REPORTED_SEX_STATUS ==
+    "GENOTYPE_NOT_MATCHED_TO_PHENOTYPE"
+)
+
+n_missing_or_unrecognised_sex <- sum(
+  samples$REPORTED_SEX_STATUS ==
+    "MISSING_OR_UNRECOGNISED_PHENOTYPE_SEX"
+)
+
+n_reported_sex_unknown <- sum(
+  samples$REPORTED_SEX == 0L
+)
+
+if (
+  n_genotype_not_matched +
+    n_missing_or_unrecognised_sex !=
+    n_reported_sex_unknown
+) {
+  stop(
+    paste(
+      "Internal consistency error:",
+      "reported-sex unknown categories do not sum",
+      "to the total unknown count."
+    ),
+    call. = FALSE
+  )
+}
+
+# Write sample-level classification --------------------------------------------
+
+output_columns <- c(
+  "FID",
+  "IID",
+  "F",
+  "PHENOTYPE_MATCHED",
+  "REPORTED_SEX",
+  "REPORTED_SEX_LABEL",
+  "REPORTED_SEX_STATUS",
+  "GENETIC_SEX",
+  "GENETIC_SEX_LABEL",
+  "REPORTED_GENETIC_SEX_MATCH",
+  "STATUS",
+  "REVIEW_FLAG",
+  "EXCLUDE"
+)
 
 write.table(
-    data.frame(
-        FID = fam$FID[unmatched_genotype_rows],
-        IID = fam$IID[unmatched_genotype_rows],
-        MATCH_ID = fam$MATCH_ID[unmatched_genotype_rows]
+  samples[, output_columns, drop = FALSE],
+  file = args$table,
+  sep = "\t",
+  row.names = FALSE,
+  quote = FALSE,
+  na = "NA"
+)
+
+# Write candidate thresholds ---------------------------------------------------
+
+# These values come directly from config.yaml.
+# No empirical threshold is calculated.
+
+writeLines(
+  c(
+    "# Fixed candidate thresholds; manual approval required.",
+    sprintf(
+      "female_max_f: %.8g",
+      female_max_f
     ),
-    file = opt$`unmatched-genotypes`,
-    sep = "\t",
-    row.names = FALSE,
-    quote = FALSE
-)
-
-
-# ----------------------------------------------------------
-# 18. Write phenotype IDs not found in the genotype data
-# ----------------------------------------------------------
-
-# Identify phenotype IDs used by at least one genotype sample.
-used_phenotype_ids <- unique(
-    fam$MATCH_ID[!is.na(match_index)]
-)
-
-# Phenotype IDs not used by genotype samples are reported.
-unmatched_phenotype_rows <- !(
-    phenotype$MATCH_ID %in% used_phenotype_ids
-)
-
-write.table(
-    data.frame(
-        PHENOTYPE_ID = phenotype[[phenotype_id_column]][
-            unmatched_phenotype_rows
-        ],
-        MATCH_ID = phenotype$MATCH_ID[
-            unmatched_phenotype_rows
-        ]
-    ),
-    file = opt$`unmatched-phenotype`,
-    sep = "\t",
-    row.names = FALSE,
-    quote = FALSE
-)
-
-
-# ----------------------------------------------------------
-# 19. Write the final matching summary
-# ----------------------------------------------------------
-
-write_metric(
-    c(
-        mode = genotype_id_mode,
-        genotype_samples = nrow(fam),
-        phenotype_rows = nrow(phenotype),
-        matched = sum(!is.na(match_index)),
-        genotype_only = sum(is.na(match_index)),
-        phenotype_only = sum(unmatched_phenotype_rows),
-        missing_reported_sex = sum(plink_sex == "0")
+    sprintf(
+      "male_min_f: %.8g",
+      male_min_f
     )
+  ),
+  args[["candidate-thresholds"]]
+)
+
+# Create diagnostic plots -------------------------------------------------------
+
+finite_f <- samples$F[
+  is.finite(samples$F)
+]
+
+reported_female_f <- samples$F[
+  samples$REPORTED_SEX == 2L &
+    is.finite(samples$F)
+]
+
+reported_male_f <- samples$F[
+  samples$REPORTED_SEX == 1L &
+    is.finite(samples$F)
+]
+
+pdf(
+  args$plot,
+  width = 9,
+  height = 7
+)
+
+if (length(finite_f)) {
+  # Page 1: overall F distribution.
+  hist(
+    finite_f,
+    breaks = 80,
+    col = "grey80",
+    border = "white",
+    main = "chrX F distribution",
+    xlab = "chrX inbreeding coefficient (F)"
+  )
+
+  abline(
+    v = c(female_max_f, male_min_f),
+    col = c("red", "blue"),
+    lty = 2,
+    lwd = 2
+  )
+
+  legend(
+    "topright",
+    legend = c(
+      sprintf(
+        "Female maximum F = %.4g",
+        female_max_f
+      ),
+      sprintf(
+        "Male minimum F = %.4g",
+        male_min_f
+      )
+    ),
+    col = c("red", "blue"),
+    lty = 2,
+    lwd = 2,
+    bty = "n"
+  )
+
+  # Page 2: F values grouped by reported sex.
+  plot_groups <- list()
+
+  if (length(reported_female_f)) {
+    plot_groups[["Reported female"]] <-
+      reported_female_f
+  }
+
+  if (length(reported_male_f)) {
+    plot_groups[["Reported male"]] <-
+      reported_male_f
+  }
+
+  if (length(plot_groups)) {
+    boxplot(
+      plot_groups,
+      col = c(
+        rgb(1, 0, 0, 0.35),
+        rgb(0, 0, 1, 0.35)
+      )[seq_along(plot_groups)],
+      main = "chrX F by reported sex",
+      ylab = "chrX inbreeding coefficient (F)"
+    )
+
+    abline(
+      h = c(female_max_f, male_min_f),
+      col = c("red", "blue"),
+      lty = 2,
+      lwd = 2
+    )
+  } else {
+    plot.new()
+    title("chrX F by reported sex")
+    text(
+      0.5,
+      0.5,
+      "No samples with known reported sex"
+    )
+  }
+} else {
+  plot.new()
+  title("chrX F distribution")
+  text(
+    0.5,
+    0.5,
+    "No finite chrX F values available"
+  )
+}
+
+dev.off()
+
+# Write summary -----------------------------------------------------------------
+
+summary_table <- data.frame(
+  metric = c(
+    "female_max_f",
+    "male_min_f",
+    "exclude_ambiguous",
+    "exclude_discordant",
+    "n_samples",
+    "n_samples_with_f",
+    "n_genetic_female",
+    "n_genetic_male",
+    "n_reported_genetic_match",
+    "n_discordant",
+    "n_ambiguous",
+    "n_missing_genetic_sex",
+    "n_genotype_not_matched_to_phenotype",
+    "n_missing_or_unrecognised_phenotype_sex",
+    "n_reported_sex_unknown",
+    "n_excluded"
+  ),
+  value = c(
+    female_max_f,
+    male_min_f,
+    exclude_ambiguous,
+    exclude_discordant,
+    nrow(samples),
+    sum(has_f_value),
+    sum(samples$GENETIC_SEX == 2L),
+    sum(samples$GENETIC_SEX == 1L),
+    sum(samples$REPORTED_GENETIC_SEX_MATCH),
+    sum(samples$STATUS == "DISCORDANT"),
+    sum(samples$STATUS == "AMBIGUOUS_GENETIC_SEX"),
+    sum(!has_f_value),
+    n_genotype_not_matched,
+    n_missing_or_unrecognised_sex,
+    n_reported_sex_unknown,
+    sum(samples$EXCLUDE)
+  ),
+  stringsAsFactors = FALSE
+)
+
+summary_table$warning <- ""
+summary_table$warning[
+  summary_table$metric ==
+    "n_genotype_not_matched_to_phenotype"
+] <- "WARNING / investigate; not automatically excluded"
+
+write.table(
+  summary_table,
+  file = args$summary,
+  sep = "\t",
+  row.names = FALSE,
+  quote = FALSE
 )

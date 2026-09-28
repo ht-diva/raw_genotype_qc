@@ -21,7 +21,7 @@ phenotype:
   sex_col: "sex"
   genotype_id_mode: "regex"
   genotype_id_regex: '^CAMBRIDGE-BELIEVE_([0-9]+)_[0-9]+$'
-  id_normalization: "integer_string"
+  id_normalization: "integer64"
 
 male_values:
   - 1
