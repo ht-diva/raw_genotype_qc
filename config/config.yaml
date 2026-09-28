@@ -10,13 +10,13 @@ keep_ids:
   metabolomics: null
 
 #paths
-bed_path: "/processing_data/shared_datasets/plasma_proteome/believe/raw_data/genotypes/BELIEVE_imputed/CAMBRIDGE-BELIEVE_Freeze_One.GxS.bed"
-bim_path: "/processing_data/shared_datasets/plasma_proteome/believe/raw_data/genotypes/BELIEVE_imputed/CAMBRIDGE-BELIEVE_Freeze_One.GxS.bim"
-fam_path: "/processing_data/shared_datasets/plasma_proteome/believe/raw_data/genotypes/BELIEVE_imputed/CAMBRIDGE-BELIEVE_Freeze_One.GxS.fam"
+bed_path: "/processing_data/shared_datasets/plasma_proteome/believe/genotypes/BELIEVE_imputed/CAMBRIDGE-BELIEVE_Freeze_One.GxS.bed"
+bim_path: "/processing_data/shared_datasets/plasma_proteome/believe/genotypes/BELIEVE_imputed/CAMBRIDGE-BELIEVE_Freeze_One.GxS.bim"
+fam_path: "/processing_data/shared_datasets/plasma_proteome/believe/genotypes/BELIEVE_imputed/CAMBRIDGE-BELIEVE_Freeze_One.GxS.fam"
 
 # Phenotype file and columns used to match samples and obtain reported sex.
 phenotype:
-  path: "/processing_data/shared_datasets/plasma_proteome/believe/raw_data/phenotypes/analysis.dta"
+  path: "/processing_data/shared_datasets/plasma_proteome/believe/phenotypes/P5070/BELIEVE_P5070_full_cohort_data.csv"
   phenotype_id_col: "RegGen_GxS"
   sex_col: "sex"
   genotype_id_mode: "regex"
@@ -53,8 +53,8 @@ accepted_sex_thresholds: "config/accepted_sex_thresholds.yaml"
 
 ld_pruning:
   window_kb: 50
-  step_variants: 1
-  r2: 0.5
+  step_variants: 5
+  r2: 0.2
 
 pca:
   components: 20

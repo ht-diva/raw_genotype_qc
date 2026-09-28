@@ -26,7 +26,6 @@
 suppressPackageStartupMessages({
     library(optparse)
     library(data.table)
-    library(haven)
 })
 
 
@@ -285,12 +284,25 @@ if (
 # ----------------------------------------------------------
 
 read_phenotype <- function(path) {
+    if (!file.exists(path)) {
+        stop(
+            paste("Phenotype file not found; check phenotype.path in the config:", path),
+            call. = FALSE
+        )
+    }
+
     lowercase_path <- tolower(path)
 
     # Read Stata files.
     if (grepl("\\.dta$", lowercase_path)) {
+        if (!requireNamespace("haven", quietly = TRUE)) {
+            stop(
+                "Reading a .dta phenotype file requires haven (Conda package r-haven).",
+                call. = FALSE
+            )
+        }
         return(
-            as.data.frame(read_dta(path))
+            as.data.frame(haven::read_dta(path))
         )
     }
 
