@@ -6,7 +6,7 @@
 #SBATCH --mail-user=username@fht.org
 #SBATCH --partition=cpuq
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=2G
+#SBATCH --mem=12G
 #SBATCH --time=08:00:00
 
 set -eo pipefail
