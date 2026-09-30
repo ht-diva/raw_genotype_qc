@@ -53,7 +53,7 @@ accepted_sex_thresholds: "config/accepted_sex_thresholds.yaml"
 
 ld_pruning:
   window_kb: 50
-  step_variants: 5
+  step_variants: 1
   r2: 0.2
 
 pca:
