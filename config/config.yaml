@@ -58,3 +58,9 @@ ld_pruning:
 
 pca:
   components: 20
+
+pcadapt:
+  n_pcs: 5
+  preliminary_autosvd_max_iter: 1
+  autosvd_min_maf: 0.01
+  keep_adjusted_p_above: 0.05

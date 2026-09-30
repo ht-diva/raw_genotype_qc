@@ -34,6 +34,31 @@ SEX_QC_OUTPUTS = (
     else SEX_REVIEW_OUTPUTS
 )
 
+# Population-structure and relatedness QC should only run after the
+# sex-QC thresholds have been manually accepted.
+STRUCTURE_OUTPUTS = (
+    [
+        ws_path("structure/structure_samples.keep"),
+        ws_path("structure/structure_sample_exclusions.tsv"),
+        ws_path("structure/structure_samples.summary.tsv"),
+        ws_path("structure/genotype.bed"),
+        ws_path("structure/genotype.bim"),
+        ws_path("structure/genotype.fam"),
+        ws_path("structure/genotype.log"),
+        ws_path("structure/pcadapt/king_variants.keep.txt"),
+        ws_path("structure/pcadapt/ancestry_associated_variants.tsv"),
+        ws_path("structure/pcadapt/pcadapt_diagnostics.pdf"),
+        ws_path("structure/pcadapt/pcadapt.summary.tsv"),
+        ws_path("structure/king.king.cutoff.in.id"),
+        ws_path("structure/king.king.cutoff.out.id"),
+        ws_path("structure/king.log"),
+        ws_path("structure/king_pairs.kin0"),
+        ws_path("structure/king_pairs.log"),
+    ]
+    if Path(SEX_APPROVAL_FILE).is_file()
+    else []
+)
+
 
 rule all:
     input:
@@ -62,24 +87,12 @@ rule all:
             ws_path("standardization/genotype.fam"),
 
             # Sample missingness
-            ws_path(
-                "sample_missingness/sample_missingness.smiss"
-            ),
-            ws_path(
-                "sample_missingness/sample_missingness.log"
-            ),
-            ws_path(
-                "sample_missingness/sample_missingness.png"
-            ),
-            ws_path(
-                "sample_missingness/sample_missingness.summary.tsv"
-            ),
-            ws_path(
-                "sample_missingness/passing_samples.id"
-            ),
-            ws_path(
-                "sample_missingness/mind_filter.log"
-            ),
+            ws_path("sample_missingness/sample_missingness.smiss"),
+            ws_path("sample_missingness/sample_missingness.log"),
+            ws_path("sample_missingness/sample_missingness.png"),
+            ws_path("sample_missingness/sample_missingness.summary.tsv"),
+            ws_path("sample_missingness/passing_samples.id"),
+            ws_path("sample_missingness/mind_filter.log"),
 
             # Final genotype dataset after sample missingness filtering
             ws_path("sample_missingness/genotype.bed"),
@@ -130,6 +143,10 @@ rule all:
 
             # Sex-QC review or final outputs
             *SEX_QC_OUTPUTS,
+
+            # Population structure and KING relatedness QC.
+            # These targets are enabled only after sex-QC approval.
+            *STRUCTURE_OUTPUTS,
         ]
 
 
@@ -139,3 +156,5 @@ include: "workflow/rules/sample_missingness.smk"
 include: "workflow/rules/autosomal_qc.smk"
 include: "workflow/rules/heterozygosity_qc.smk"
 include: "workflow/rules/sex_qc.smk"
+
+include: "workflow/rules/structure.smk"

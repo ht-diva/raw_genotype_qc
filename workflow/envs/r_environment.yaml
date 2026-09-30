@@ -8,4 +8,6 @@ dependencies:
   - r-optparse
   - r-data.table
   - r-bit64
+  - r-bigsnpr
+  - r-bigstatsr
 

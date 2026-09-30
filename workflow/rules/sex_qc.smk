@@ -259,3 +259,36 @@ rule apply_approved_sex_thresholds:
             --classification "{output.classification}" \
             --summary "{output.summary}"
         """
+
+rule apply_sex_qc_exclusions:
+    input:
+        # Full chromosome set with heterozygosity outliers already removed.
+        # Do not use the chrX-only dataset to prepare the autosomal branch.
+        bed=rules.apply_heterozygosity_exclusions.output.bed,
+        bim=rules.apply_heterozygosity_exclusions.output.bim,
+        fam=rules.apply_heterozygosity_exclusions.output.fam,
+        exclusions=rules.apply_approved_sex_thresholds.output.exclusions,
+    output:
+        bed=ws_path("sex_qc/genotype.bed"),
+        bim=ws_path("sex_qc/genotype.bim"),
+        fam=ws_path("sex_qc/genotype.fam"),
+        log=ws_path("sex_qc/genotype.log"),
+    container:
+        "docker://gitlab.fht.org:5050/hds-center/containers/plink2:0e8e82d8"
+    threads: 8
+    resources:
+        runtime=90,
+        mem_mb=12000,
+    params:
+        bfile=ws_path("heterozygosity/genotype"),
+        prefix=ws_path("sex_qc/genotype"),
+    shell:
+        r"""
+        set -euo pipefail
+        mkdir -p "$(dirname "{output.bed}")"
+        plink2 \
+            --bfile "{params.bfile}" \
+            --remove "{input.exclusions}" \
+            --make-bed --out "{params.prefix}" \
+            --threads {threads} --memory 11000
+        """
