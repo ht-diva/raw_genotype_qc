@@ -1,6 +1,3 @@
-from pathlib import Path
-
-
 configfile: "config/config.yaml"
 
 
@@ -8,13 +5,14 @@ configfile: "config/config.yaml"
 include: "workflow/rules/common.smk"
 
 
-# Sex-QC manual approval --------------------------------------------------------
+# Sex-QC -----------------------------------------------------------------------
 
-SEX_APPROVAL_FILE = cfg(
-    "accepted_sex_thresholds",
-    "config/accepted_sex_thresholds.yaml",
+SEX_THRESHOLDS_FILE = cfg(
+    "sex_thresholds",
+    "config/sex_thresholds.yaml",
 )
 
+# Diagnostic outputs for reviewing sex-QC thresholds.
 SEX_REVIEW_OUTPUTS = [
     ws_path("review/sex/sex_F_distribution.pdf"),
     ws_path("review/sex/sex_candidate_classification.tsv"),
@@ -22,42 +20,46 @@ SEX_REVIEW_OUTPUTS = [
     ws_path("review/sex/sex_qc.summary.tsv"),
 ]
 
+# Final sex-QC outputs generated using the currently configured thresholds.
 SEX_FINAL_OUTPUTS = [
     ws_path("sex_qc/automatic_sex_exclusions.tsv"),
     ws_path("sex_qc/sex_classification.tsv"),
     ws_path("sex_qc/accepted_sex_qc.summary.tsv"),
 ]
 
-SEX_QC_OUTPUTS = (
-    SEX_FINAL_OUTPUTS
-    if Path(SEX_APPROVAL_FILE).is_file()
-    else SEX_REVIEW_OUTPUTS
-)
+# Always generate both the diagnostic review outputs and the final
+# sex-QC classification/exclusion outputs.
+SEX_QC_OUTPUTS = SEX_REVIEW_OUTPUTS + SEX_FINAL_OUTPUTS
 
-# Population-structure and relatedness QC should only run after the
-# sex-QC thresholds have been manually accepted.
-STRUCTURE_OUTPUTS = (
-    [
-        ws_path("structure/structure_samples.keep"),
-        ws_path("structure/structure_sample_exclusions.tsv"),
-        ws_path("structure/structure_samples.summary.tsv"),
-        ws_path("structure/genotype.bed"),
-        ws_path("structure/genotype.bim"),
-        ws_path("structure/genotype.fam"),
-        ws_path("structure/genotype.log"),
-        ws_path("structure/pcadapt/king_variants.keep.txt"),
-        ws_path("structure/pcadapt/ancestry_associated_variants.tsv"),
-        ws_path("structure/pcadapt/pcadapt_diagnostics.pdf"),
-        ws_path("structure/pcadapt/pcadapt.summary.tsv"),
-        ws_path("structure/king.king.cutoff.in.id"),
-        ws_path("structure/king.king.cutoff.out.id"),
-        ws_path("structure/king.log"),
-        ws_path("structure/king_pairs.kin0"),
-        ws_path("structure/king_pairs.log"),
-    ]
-    if Path(SEX_APPROVAL_FILE).is_file()
-    else []
-)
+
+# Population-structure and relatedness QC -------------------------------------
+
+# These outputs are always part of the final workflow.
+# The structure/KING branch therefore runs during the first execution using
+# the currently configured sex thresholds. If the thresholds are revised
+# later, Snakemake will rerun the sex-dependent downstream rules.
+STRUCTURE_OUTPUTS = [
+    ws_path("structure/structure_samples.keep"),
+    ws_path("structure/structure_sample_exclusions.tsv"),
+    ws_path("structure/structure_samples.summary.tsv"),
+
+    ws_path("structure/genotype.bed"),
+    ws_path("structure/genotype.bim"),
+    ws_path("structure/genotype.fam"),
+    ws_path("structure/genotype.log"),
+
+    ws_path("structure/pcadapt/king_variants.keep.txt"),
+    ws_path("structure/pcadapt/ancestry_associated_variants.tsv"),
+    ws_path("structure/pcadapt/pcadapt_diagnostics.pdf"),
+    ws_path("structure/pcadapt/pcadapt.summary.tsv"),
+
+    ws_path("structure/king.king.cutoff.in.id"),
+    ws_path("structure/king.king.cutoff.out.id"),
+    ws_path("structure/king.log"),
+
+    ws_path("structure/king_pairs.kin0"),
+    ws_path("structure/king_pairs.log"),
+]
 
 
 rule all:
@@ -141,11 +143,10 @@ rule all:
             ws_path("sex_qc/sex_candidate.sexcheck"),
             ws_path("sex_qc/sex_candidate.log"),
 
-            # Sex-QC review or final outputs
+            # Sex-QC diagnostic and final outputs
             *SEX_QC_OUTPUTS,
 
-            # Population structure and KING relatedness QC.
-            # These targets are enabled only after sex-QC approval.
+            # Population structure and KING relatedness QC
             *STRUCTURE_OUTPUTS,
         ]
 
@@ -156,5 +157,4 @@ include: "workflow/rules/sample_missingness.smk"
 include: "workflow/rules/autosomal_qc.smk"
 include: "workflow/rules/heterozygosity_qc.smk"
 include: "workflow/rules/sex_qc.smk"
-
 include: "workflow/rules/structure.smk"
