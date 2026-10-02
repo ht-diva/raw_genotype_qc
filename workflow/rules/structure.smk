@@ -88,7 +88,7 @@ rule pcadapt_for_king:
     conda:
         "../envs/r_environment.yaml"
     threads:
-        8
+        1
     resources:
         runtime=240,
         mem_mb=65536,
