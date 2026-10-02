@@ -214,17 +214,13 @@ rule sex_qc_review:
             --summary "{output.summary}"
         """
 
-rule apply_approved_sex_thresholds:
+rule apply_sex_thresholds:
     input:
         sexcheck=(
             rules.check_sex_candidate_thresholds.output.sexcheck
         ),
         fam=rules.create_x_qc_markers.output.fam,
         unmatched_genotypes=rules.prepare_reported_sex.output.unmatched_genotypes,
-        threshold=lambda wc: cfg(
-            "accepted_sex_thresholds",
-            "config/accepted_sex_thresholds.yaml",
-        ),
     output:
         exclusions=ws_path(
             "sex_qc/automatic_sex_exclusions.tsv"
@@ -238,6 +234,12 @@ rule apply_approved_sex_thresholds:
     conda:
         "../envs/r_environment.yaml"
     params:
+        female_max_f=lambda wc: cfg(
+            "sex_qc/female_max_f"
+        ),
+        male_min_f=lambda wc: cfg(
+            "sex_qc/male_min_f"
+        ),
         exclude_ambiguous=lambda wc: cfg(
             "sex_qc/exclude_ambiguous_sex"
         ),
@@ -252,7 +254,8 @@ rule apply_approved_sex_thresholds:
             --sexcheck "{input.sexcheck}" \
             --fam "{input.fam}" \
             --unmatched-genotypes "{input.unmatched_genotypes}" \
-            --thresholds "{input.threshold}" \
+            --female-max-f "{params.female_max_f}" \
+            --male-min-f "{params.male_min_f}" \
             --exclude-ambiguous "{params.exclude_ambiguous}" \
             --exclude-discordant "{params.exclude_discordant}" \
             --exclusions "{output.exclusions}" \
@@ -267,7 +270,7 @@ rule apply_sex_qc_exclusions:
         bed=rules.apply_heterozygosity_exclusions.output.bed,
         bim=rules.apply_heterozygosity_exclusions.output.bim,
         fam=rules.apply_heterozygosity_exclusions.output.fam,
-        exclusions=rules.apply_approved_sex_thresholds.output.exclusions,
+        exclusions=rules.apply_sex_thresholds.output.exclusions,
     output:
         bed=ws_path("sex_qc/genotype.bed"),
         bim=ws_path("sex_qc/genotype.bim"),

@@ -49,7 +49,6 @@ sex_qc:
   female_max_f: 0.49
   male_min_f: 0.51
 
-accepted_sex_thresholds: "config/accepted_sex_thresholds.yaml"
 
 ld_pruning:
   window_kb: 50

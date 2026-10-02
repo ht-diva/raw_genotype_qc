@@ -7,11 +7,6 @@ include: "workflow/rules/common.smk"
 
 # Sex-QC -----------------------------------------------------------------------
 
-SEX_THRESHOLDS_FILE = cfg(
-    "sex_thresholds",
-    "config/sex_thresholds.yaml",
-)
-
 # Diagnostic outputs for reviewing sex-QC thresholds.
 SEX_REVIEW_OUTPUTS = [
     ws_path("review/sex/sex_F_distribution.pdf"),

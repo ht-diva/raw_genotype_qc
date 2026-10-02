@@ -521,7 +521,7 @@ write.table(
 
 writeLines(
   c(
-    "# Fixed candidate thresholds; manual approval required.",
+    "# Sex-QC thresholds used for this workflow run.",
     sprintf(
       "female_max_f: %.8g",
       female_max_f

@@ -28,7 +28,7 @@ help:
 	@echo "  make dry-run       Validate the DAG without running jobs"
 	@echo "  make run           Submit jobs with the SLURM profile"
 	@echo "  make run-local     Run locally (override with CORES=N)"
-	@echo "  make review-sex-qc Review sex-QC results and continue"
+	@echo "  make review-sex-qc Review sex-QC thresholds after a completed run"
 	@echo "  make lint          Run the Snakemake workflow linter"
 	@echo "  make summary       Show the status of output files"
 	@echo "  make dag           Write the job DAG to dag.svg"
@@ -59,17 +59,10 @@ review-sex-qc:
 	summary="results/review/sex/sex_qc.summary.tsv"; \
 	plot="results/review/sex/sex_F_distribution.pdf"; \
 	table="results/review/sex/sex_candidate_classification.tsv"; \
-	candidate="results/review/sex/candidate_sex_thresholds.yaml"; \
-	accepted="config/accepted_sex_thresholds.yaml"; \
 	if [[ ! -s "$$summary" ]]; then \
 		echo "ERROR: sex-QC summary not found:" >&2; \
 		echo "  $$summary" >&2; \
 		echo "Run 'make run' first." >&2; \
-		exit 1; \
-	fi; \
-	if [[ ! -s "$$candidate" ]]; then \
-		echo "ERROR: candidate thresholds not found:" >&2; \
-		echo "  $$candidate" >&2; \
 		exit 1; \
 	fi; \
 	echo ""; \
@@ -89,21 +82,13 @@ review-sex-qc:
 		cat "$$summary"; \
 	fi; \
 	echo ""; \
-	echo "Candidate thresholds:"; \
-	echo "----------------------------------------"; \
-	cat "$$candidate"; \
-	echo ""; \
-	printf "Continue with these thresholds? [y/n]: "; \
+	printf "Accept the sex-QC thresholds used in this run? [y/n]: "; \
 	read -r answer; \
 	case "$$answer" in \
 		y|Y|yes|YES) \
-			cp "$$candidate" "$$accepted"; \
 			echo ""; \
-			echo "Thresholds accepted:"; \
-			cat "$$accepted"; \
-			echo ""; \
-			echo "Continuing the workflow..."; \
-			$(MAKE) run \
+			echo "Sex-QC thresholds accepted."; \
+			echo "Existing pipeline results are kept unchanged."; \
 			;; \
 		n|N|no|NO) \
 			echo ""; \
@@ -111,37 +96,20 @@ review-sex-qc:
 			read -r female_max; \
 			printf "New minimum F for males: "; \
 			read -r male_min; \
-			if ! awk \
-				-v female="$$female_max" \
-				-v male="$$male_min" \
-				'BEGIN { \
-					number = "^-?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][-+]?[0-9]+)?$$"; \
-					if (female !~ number || male !~ number) exit 1; \
-					if ((female + 0) >= (male + 0)) exit 1; \
-				}'; then \
-				echo "ERROR: thresholds must be numeric and" >&2; \
-				echo "female_max_f must be lower than male_min_f." >&2; \
-				exit 1; \
-			fi; \
-			printf "female_max_f: %s\nmale_min_f: %s\n" \
-				"$$female_max" \
-				"$$male_min" \
-				> "$$accepted"; \
+			python3 workflow/scripts/update_sex_thresholds.py \
+				--config "$(CONFIGFILE)" \
+				--female-max-f "$$female_max" \
+				--male-min-f "$$male_min"; \
 			echo ""; \
-			echo "New thresholds saved:"; \
-			cat "$$accepted"; \
-			echo ""; \
-			echo "Continuing the workflow..."; \
-			$(MAKE) run \
+			echo "Thresholds changed. Rerunning sex-QC-dependent workflow steps..."; \
+			$(MAKE) run; \
 			;; \
 		*) \
 			echo ""; \
-			echo "No valid choice entered."; \
-			echo "The workflow was not continued."; \
+			echo "ERROR: enter y or n." >&2; \
 			exit 1 \
 			;; \
 	esac
-
 
 lint:
 	$(SNAKEMAKE) $(COMMON_ARGS) --lint

@@ -7,7 +7,7 @@ STRUCTURE_QC_PREFIX = "structure/genotype"
 rule structure_sample_set:
     input:
         fam=rules.apply_heterozygosity_exclusions.output.fam,
-        sex_exclusions=rules.apply_approved_sex_thresholds.output.exclusions,
+        sex_exclusions=rules.apply_sex_thresholds.output.exclusions,
     output:
         keep=ws_path("structure/structure_samples.keep"),
         exclusions=ws_path("structure/structure_sample_exclusions.tsv"),

@@ -24,9 +24,14 @@ option_list <- list(
     help = "Genotype samples not matched to phenotype file"
   ),
   make_option(
-    "--thresholds",
-    type = "character",
-    help = "Accepted threshold YAML file"
+    "--female-max-f",
+    type = "double",
+    help = "Maximum chrX F value used to classify genetic females"
+  ),
+  make_option(
+    "--male-min-f",
+    type = "double",
+    help = "Minimum chrX F value used to classify genetic males"
   ),
   make_option(
     "--exclude-ambiguous",
@@ -65,7 +70,8 @@ required_args <- c(
   "sexcheck",
   "fam",
   "unmatched-genotypes",
-  "thresholds",
+  "female-max-f",
+  "male-min-f",
   "exclude-ambiguous",
   "exclude-discordant",
   "exclusions",
@@ -137,120 +143,30 @@ exclude_discordant <- parse_boolean(
   "--exclude-discordant"
 )
 
-# Read manually accepted thresholds --------------------------------------------
+# Validate configured thresholds -----------------------------------------------
 
-parse_thresholds <- function(path) {
-  if (!file.exists(path)) {
-    stop(
-      "Accepted threshold file does not exist: ",
-      path,
-      call. = FALSE
-    )
-  }
+female_max_f <- args[["female-max-f"]]
+male_min_f <- args[["male-min-f"]]
 
-  lines <- readLines(
-    path,
-    warn = FALSE
-  )
-
-  lines <- sub("#.*$", "", lines)
-  lines <- trimws(lines)
-
-  lines <- lines[
-    nzchar(lines) &
-      grepl(":", lines, fixed = TRUE)
-  ]
-
-  keys <- trimws(
-    sub(":.*$", "", lines)
-  )
-
-  values <- trimws(
-    sub("^[^:]*:", "", lines)
-  )
-
-  if (anyDuplicated(keys)) {
-    duplicated_keys <- unique(
-      keys[duplicated(keys)]
-    )
-
-    stop(
-      "Threshold file contains duplicate key(s): ",
-      paste(duplicated_keys, collapse = ", "),
-      call. = FALSE
-    )
-  }
-
-  thresholds <- setNames(
-    suppressWarnings(
-      as.numeric(values)
-    ),
-    keys
-  )
-
-  required_keys <- c(
-    "female_max_f",
-    "male_min_f"
-  )
-
-  missing_keys <- setdiff(
-    required_keys,
-    names(thresholds)
-  )
-
-  if (length(missing_keys)) {
-    stop(
-      "Threshold file must define: ",
-      paste(missing_keys, collapse = ", "),
-      call. = FALSE
-    )
-  }
-
-  female_max_f <- unname(
-    thresholds["female_max_f"]
-  )
-
-  male_min_f <- unname(
-    thresholds["male_min_f"]
-  )
-
-  if (
-    !is.finite(female_max_f) ||
-      !is.finite(male_min_f)
-  ) {
-    stop(
-      "Sex-QC thresholds must be finite numbers.",
-      call. = FALSE
-    )
-  }
-
-  if (female_max_f >= male_min_f) {
-    stop(
-      paste(
-        "female_max_f must be lower",
-        "than male_min_f."
-      ),
-      call. = FALSE
-    )
-  }
-
-  c(
-    female_max_f = female_max_f,
-    male_min_f = male_min_f
+if (
+  !is.finite(female_max_f) ||
+    !is.finite(male_min_f)
+) {
+  stop(
+    "Sex-QC thresholds must be finite numbers.",
+    call. = FALSE
   )
 }
 
-thresholds <- parse_thresholds(
-  args$thresholds
-)
-
-female_max_f <- unname(
-  thresholds["female_max_f"]
-)
-
-male_min_f <- unname(
-  thresholds["male_min_f"]
-)
+if (female_max_f >= male_min_f) {
+  stop(
+    paste(
+      "female_max_f must be lower",
+      "than male_min_f."
+    ),
+    call. = FALSE
+  )
+}
 
 # Read PLINK sex-check results --------------------------------------------------
 
