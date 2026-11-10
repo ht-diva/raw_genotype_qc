@@ -192,3 +192,4 @@ rule king_table:
             --threads {threads} \
             --memory {resources.mem_mb}
         """
+
