@@ -3,10 +3,10 @@ run:
 
 # Restrict samples to the selected assay before phenotype matching and QC.
 # false skips the keep file; external exclusions and QC still apply.
-keep_ids:
+keep_ids: #rename this variable
   enabled: true
   type: "proteomics"  # proteomics or metabolomics
-  proteomics: "/center/healthds/pQTL/BELIEVE/common_ID_cleaned.txt"
+  proteomics: "/center/healthds/pQTL/BELIEVE/common_ID_cleaned.txt" #more generalizable
   metabolomics: null
 
 #paths
@@ -63,3 +63,96 @@ pcadapt:
   preliminary_autosvd_max_iter: 1
   autosvd_min_maf: 0.01
   keep_adjusted_p_above: 0.05
+####################################################################################
+run:
+  delivery: False
+
+# Restrict samples to the selected assay before phenotype matching and QC.
+# false skips the keep file; external exclusions and QC still apply.
+keep_ids:
+  enabled: true
+  type: "proteomics"  # proteomics or metabolomics
+  proteomics: "/center/healthds/pQTL/BELIEVE/common_ID_cleaned.txt"
+  metabolomics: null
+
+#paths
+bed_path: "/processing_data/shared_datasets/plasma_proteome/believe/genotypes/BELIEVE_imputed/CAMBRIDGE-BELIEVE_Freeze_One.GxS.bed"
+bim_path: "/processing_data/shared_datasets/plasma_proteome/believe/genotypes/BELIEVE_imputed/CAMBRIDGE-BELIEVE_Freeze_One.GxS.bim"
+fam_path: "/processing_data/shared_datasets/plasma_proteome/believe/genotypes/BELIEVE_imputed/CAMBRIDGE-BELIEVE_Freeze_One.GxS.fam"
+
+# Phenotype file and columns used to match samples and obtain reported sex.
+phenotype:
+  path: "/processing_data/shared_datasets/plasma_proteome/believe/phenotypes/P5070/BELIEVE_P5070_full_cohort_data.csv"
+  phenotype_id_col: "RegGen_GxS"
+  sex_col: "sex"
+  genotype_id_mode: "regex"
+  genotype_id_regex: '^CAMBRIDGE-BELIEVE_([0-9]+)_[0-9]+$'
+  id_normalization: "integer64"
+
+male_values:
+  - 1
+  - "M"
+  - "Male"
+
+female_value:
+  - 2
+  - "F"
+  - "Female"
+
+external_samples_exclusions: "/exchange/healthds/pQTL/BELIEVE/Genetic_QC_files/Intermediate_files_for_genetic_QC/outliers_to_remove.txt"
+
+thresholds:
+  sample_missingness: 0.10
+  variant_missingness: 0.10
+  maf: 0.01
+  hwe: 1.0e-15
+  heterozygosity_sd: 3.0
+  king_cutoff: 0.0442
+
+sex_qc:
+  exclude_ambiguous_sex: true
+  exclude_discordant_sex: true
+  female_max_f: 0.49
+  male_min_f: 0.51
+
+
+ld_pruning:
+  window_kb: 500
+  step_variants: 1
+  r2: 0.2
+
+pca:
+  # Fit on KING-unrelated samples and project the remaining retained samples.
+  enabled: true
+  seed: 1
+  components: 20  # Existing key; pca.n_pcs overrides this if supplied.
+  robust_distance_n_pcs: 6
+  robust_distance_mad_multiplier: 6
+  autosvd_max_iter: 5
+  autosvd_min_maf: 0.01
+
+pcadapt:
+  n_pcs: 5
+  preliminary_autosvd_max_iter: 1
+  autosvd_min_maf: 0.01
+  keep_adjusted_p_above: 0.05
+
+# Set false if the verified alpha-7 build cannot sort directly to BED.
+standardization:
+  direct_bed: true
+
+# Optional: supply a local reference BED prefix and labels to enable.
+pca_reference:
+  enabled: false
+  seed: 1
+  fid_col: "FID"
+  bed_prefix: null
+  labels_path: null
+  iid_col: "IID"
+  group_col: "GROUP"
+  study_build: "b38"
+  reference_build: "b38"
+  n_pcs: 10
+  match_min_prop: 0.5
+  assignment_quantile: 0.995
+  assignment_radius_multiplier: 1.2

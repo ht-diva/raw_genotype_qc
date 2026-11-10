@@ -61,6 +61,8 @@ rule all:
     input:
         [
             # Input inspection
+            ws_path("standardization/plink2.version.txt"),
+            ws_path("standardization/variant_id_mapping.tsv"),
             ws_path("standardization/input.ok"),
             ws_path("standardization/input.summary.tsv"),
 
@@ -143,6 +145,9 @@ rule all:
 
             # Population structure and KING relatedness QC
             *STRUCTURE_OUTPUTS,
+            # PCA diagnostics; reference projection is optional.
+            *([ws_path("review/pca/REVIEW_REQUIRED.done")]
+              if (cfg("pca/enabled", False) or cfg("pca_reference/enabled", False)) else []),
         ]
 
 
