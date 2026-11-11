@@ -202,46 +202,111 @@ rule standardize_genotype_pgen:
         """
 
 
-rule standardize_genotype:
-    input:
-        pgen=rules.standardize_genotype_pgen.output.pgen,
-        pvar=rules.standardize_genotype_pgen.output.pvar,
-        psam=rules.standardize_genotype_pgen.output.psam,
-    output:
-        bed=ws_path(
-            "standardization/genotype.bed"
-        ),
-        bim=ws_path(
-            "standardization/genotype.bim"
-        ),
-        fam=ws_path(
-            "standardization/genotype.fam"
-        ),
-        log=ws_path(
-            "standardization/genotype.log"
-        ),
-    container:
-        "docker://gitlab.fht.org:5050/hds-center/containers/plink2:0e8e82d8"
-    threads:
-        8
-    resources:
-        runtime=90,
-        mem_mb=12000,
-    params:
-        source=ws_path(
-            "standardization/genotype_sorted"
-        ),
-        prefix=ws_path(
-            "standardization/genotype"
-        ),
-    shell:
-        r"""
-        set -euo pipefail
+if cfg("standardization/direct_bed", True):
+    rule standardize_genotype:
+        input:
+            bed=ws_path("external_samples/genotype.bed"),
+            bim=ws_path("external_samples/genotype.bim"),
+            fam=ws_path("external_samples/genotype.fam"),
+            chromosome_map=rules.inspect_bed_input.output.chr_map,
+            update_sex=rules.prepare_reported_sex.output.update_sex,
+        output:
+            bed=ws_path(
+                "standardization/genotype.bed"
+            ),
+            bim=ws_path(
+                "standardization/genotype.bim"
+            ),
+            fam=ws_path(
+                "standardization/genotype.fam"
+            ),
+            log=ws_path(
+                "standardization/genotype.log"
+            ),
+        container:
+            "docker://gitlab.fht.org:5050/hds-center/containers/plink2:0e8e82d8"
+        threads:
+            8
+        resources:
+            runtime=90,
+            mem_mb=12000,
+        params:
+            source=ws_path(
+                "external_samples/genotype"
+            ),
+            prefix=ws_path(
+                "standardization/genotype"
+            ),
+        shell:
+            r"""
+            set -euo pipefail
 
-        plink2 \
-            --pfile "{params.source}" \
-            --make-bed \
-            --out "{params.prefix}" \
-            --threads {threads} \
-            --memory {resources.mem_mb}
-        """
+            plink2 \
+                --bfile "{params.source}" \
+                --rename-chrs "{input.chromosome_map}" \
+                --sort-vars natural \
+                --update-sex "{input.update_sex}" \
+                --make-bed \
+                --out "{params.prefix}" \
+                --threads {threads} \
+                --memory {resources.mem_mb}
+            """
+
+
+else:
+    rule standardize_genotype:
+        input:
+            pgen=rules.standardize_genotype_pgen.output.pgen,
+            pvar=rules.standardize_genotype_pgen.output.pvar,
+            psam=rules.standardize_genotype_pgen.output.psam,
+        output:
+            bed=ws_path(
+                "standardization/genotype.bed"
+            ),
+            bim=ws_path(
+                "standardization/genotype.bim"
+            ),
+            fam=ws_path(
+                "standardization/genotype.fam"
+            ),
+            log=ws_path(
+                "standardization/genotype.log"
+            ),
+        container:
+            "docker://gitlab.fht.org:5050/hds-center/containers/plink2:0e8e82d8"
+        threads:
+            8
+        resources:
+            runtime=90,
+            mem_mb=12000,
+        params:
+            source=ws_path(
+                "standardization/genotype_sorted"
+            ),
+            prefix=ws_path(
+                "standardization/genotype"
+            ),
+        shell:
+            r"""
+            set -euo pipefail
+
+            plink2 \
+                --pfile "{params.source}" \
+                --make-bed \
+                --out "{params.prefix}" \
+                --threads {threads} \
+                --memory {resources.mem_mb}
+            """
+
+
+rule prepare_variant_ids:
+    input:
+        bim=config["bim_path"],
+        chromosome_map=rules.inspect_bed_input.output.chr_map,
+        validated=rules.inspect_bed_input.output.ok,
+    output:
+        bim=ws_path("standardization/renamed_input.bim"),
+        mapping=ws_path("standardization/variant_id_mapping.tsv"),
+    shell:
+        "python3 workflow/scripts/prepare_variant_ids.py {input.bim:q} {input.chromosome_map:q} {output.bim:q} {output.mapping:q}"
+
