@@ -10,4 +10,4 @@ dependencies:
   - r-bit64
   - r-bigsnpr
   - r-bigstatsr
-
+  - r-bigutilsr

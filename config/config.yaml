@@ -58,10 +58,13 @@ ld_pruning:
 pca:
   # Fit on KING-unrelated samples and project the remaining retained samples.
   enabled: true
+  method: plink2  # plink2 or autosvd
+  plink_min_maf: 0.01  # In the unrelated training set.
   seed: 1
   components: 20  # Existing key; pca.n_pcs overrides this if supplied.
   robust_distance_n_pcs: 6
   robust_distance_mad_multiplier: 6
+  # Used only with method: autosvd.
   autosvd_max_iter: 5
   autosvd_min_maf: 0.01
 
@@ -75,7 +78,7 @@ pcadapt:
 standardization:
   direct_bed: true
 
-# Optional: supply a local reference BED prefix and labels to enable.
+# Reserved for external-reference projection. The supplied script is a placeholder.
 pca_reference:
   enabled: false
   seed: 1
