@@ -61,7 +61,6 @@ rule all:
     input:
         [
             # Input inspection
-            ws_path("standardization/plink2.version.txt"),
             ws_path("standardization/variant_id_mapping.tsv"),
             ws_path("standardization/input.ok"),
             ws_path("standardization/input.summary.tsv"),
