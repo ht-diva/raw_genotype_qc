@@ -76,7 +76,7 @@ pcadapt:
 
 # Set false if the verified alpha-7 build cannot sort directly to BED.
 standardization:
-  direct_bed: true
+  direct_bed: false
 
 # Reserved for external-reference projection. The supplied script is a placeholder.
 pca_reference:
